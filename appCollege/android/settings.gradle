@@ -1,0 +1,25 @@
+pluginManagement {
+    includeBuild("../node_modules/@react-native/gradle-plugin")
+}
+
+plugins {
+    id("com.facebook.react.settings")
+    // On applique le plugin mais on lui retire ses serveurs de téléchargement (liste vide)
+    id("org.gradle.toolchains.foojay-resolver-convention") version "0.8.0"
+}
+
+toolchainManagement {
+    jvm {
+        javaRepositories {
+            // En laissant ça vide, Foojay n'a aucun endroit où chercher IBM_SEMERU
+        }
+    }
+}
+
+extensions.configure(com.facebook.react.ReactSettingsExtension){ ex ->
+    ex.autolinkLibrariesFromCommand()
+}
+
+rootProject.name = 'appCollege'
+include ':app'
+includeBuild('../node_modules/@react-native/gradle-plugin')

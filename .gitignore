@@ -1,0 +1,10 @@
+dashboard-app/dist/
+# Dépendances (Super important !)
+node_modules/
+
+# Dossiers de build / production
+dashboard-app/dist/
+dist/
+
+# Environnement local
+.env
