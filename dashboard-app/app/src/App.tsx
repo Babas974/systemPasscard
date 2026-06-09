@@ -383,7 +383,6 @@ export default function App() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [permissionNotif, setPermissionNotif] = useState<boolean | null>(null);
   const [debugSecret, setDebugSecret] = useState(false);
-  const [tapCount, setTapCount] = useState(0);
   const [lastTapTime, setLastTapTime] = useState(0);
   const derniersIds = useRef<Set<number>>(new Set());
   const rechercheTimer = useRef<number | null>(null);
@@ -398,18 +397,11 @@ export default function App() {
   const handleTitreTap = useCallback(() => {
     const now = Date.now();
     if (now - lastTapTime > 1000) {
-      setTapCount(1);
-    } else {
-      setTapCount((prev) => {
-        const newCount = prev + 1;
-        if (newCount >= 5) {
-          setDebugSecret((d) => !d);
-          return 0;
-        }
-        return newCount;
-      });
+      setLastTapTime(now);
+      return;
     }
     setLastTapTime(now);
+    setDebugSecret((d) => !d);
   }, [lastTapTime]);
 
   // Persistance de la page
@@ -579,7 +571,6 @@ export default function App() {
   }), []);
 
   const maxJour = useMemo(() => stats ? Math.max(1, ...stats.par_jour.map(j => j.nombre)) : 1, [stats]);
-  const maxContenu = useMemo(() => stats ? Math.max(1, ...stats.top_contenus.map(c => c.nombre)) : 1, [stats]);
 
   const conteneurStyle: React.CSSProperties = {
     ...styles.conteneur,
