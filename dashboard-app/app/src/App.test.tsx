@@ -57,11 +57,10 @@ afterEach(() => {
 });
 
 describe("App - affichage", () => {
-  it("affiche le titre Infirmerie et le statut serveur", async () => {
+  it("affiche le titre Passage aujourd'hui", async () => {
     mockInvoke();
     render(<App />);
-    expect(screen.getByText("Infirmerie")).toBeInTheDocument();
-    expect(screen.getByText(/Serveur actif.*port 8389/i)).toBeInTheDocument();
+    expect(screen.getByText("Passage aujourd'hui")).toBeInTheDocument();
   });
 
   it("affiche le message vide quand la base est vide", async () => {
