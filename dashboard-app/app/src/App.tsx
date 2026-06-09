@@ -291,38 +291,38 @@ const styles: Record<string, React.CSSProperties> = {
 
 const themes: Record<Theme, Record<string, string>> = {
   sombre: {
-    "--fond": "#111827",
-    "--surface": "#1f2937",
-    "--entete-table": "#111827",
-    "--bordure": "#374151",
-    "--bordure-danger": "#dc2626",
-    "--texte": "#f3f4f6",
-    "--texte-secondaire": "#9ca3af",
-    "--accent": "#3b82f6",
-    "--accent-fond": "rgba(59,130,246,0.15)",
-    "--danger": "#ef4444",
-    "--debug-fond": "#0f172a",
+    "--fond": "#0f172a",
+    "--surface": "#1e293b",
+    "--entete-table": "#0f172a",
+    "--bordure": "#475569",
+    "--bordure-danger": "#ef4444",
+    "--texte": "#f1f5f9",
+    "--texte-secondaire": "#cbd5e1",
+    "--accent": "#60a5fa",
+    "--accent-fond": "rgba(96,165,250,0.2)",
+    "--danger": "#f87171",
+    "--debug-fond": "#020617",
     "--debug-label": "#64748b",
     "--debug-badge-fond": "#334155",
     "--debug-badge": "#94a3b8",
     "--debug-texte": "#94a3b8",
   },
   clair: {
-    "--fond": "#f9fafb",
+    "--fond": "#f8fafc",
     "--surface": "#ffffff",
-    "--entete-table": "#f3f4f6",
-    "--bordure": "#e5e7eb",
+    "--entete-table": "#f1f5f9",
+    "--bordure": "#d1d5db",
     "--bordure-danger": "#dc2626",
-    "--texte": "#111827",
-    "--texte-secondaire": "#6b7280",
+    "--texte": "#0f172a",
+    "--texte-secondaire": "#475569",
     "--accent": "#2563eb",
-    "--accent-fond": "rgba(37,99,235,0.12)",
+    "--accent-fond": "rgba(37,99,235,0.15)",
     "--danger": "#dc2626",
     "--debug-fond": "#f1f5f9",
-    "--debug-label": "#475569",
+    "--debug-label": "#334155",
     "--debug-badge-fond": "#cbd5e1",
-    "--debug-badge": "#334155",
-    "--debug-texte": "#334155",
+    "--debug-badge": "#1e293b",
+    "--debug-texte": "#1e293b",
   },
 };
 
@@ -382,6 +382,9 @@ export default function App() {
   });
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [permissionNotif, setPermissionNotif] = useState<boolean | null>(null);
+  const [debugSecret, setDebugSecret] = useState(false);
+  const [tapCount, setTapCount] = useState(0);
+  const [lastTapTime, setLastTapTime] = useState(0);
   const derniersIds = useRef<Set<number>>(new Set());
   const rechercheTimer = useRef<number | null>(null);
 
@@ -390,6 +393,24 @@ export default function App() {
     appliquerTheme(theme);
     localStorage.setItem(CLE_THEME, theme);
   }, [theme]);
+
+  // Mode debug secret : 5 taps sur le titre
+  const handleTitreTap = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTapTime > 1000) {
+      setTapCount(1);
+    } else {
+      setTapCount((prev) => {
+        const newCount = prev + 1;
+        if (newCount >= 5) {
+          setDebugSecret((d) => !d);
+          return 0;
+        }
+        return newCount;
+      });
+    }
+    setLastTapTime(now);
+  }, [lastTapTime]);
 
   // Persistance de la page
   useEffect(() => {
@@ -579,15 +600,17 @@ export default function App() {
     <div style={conteneurStyle}>
       {/* En-tête */}
       <header style={styles.enTete}>
-        <div>
-          <h1 style={styles.titrePrincipal}>Infirmerie</h1>
+        <div
+          onClick={handleTitreTap}
+          style={{ cursor: "pointer", userSelect: "none" }}
+          title="Cliquer 5 fois pour le mode debug"
+        >
+          <h1 style={styles.titrePrincipal}>Passage aujourd&apos;hui</h1>
           <p style={styles.sousTitre}>
             {new Date().toLocaleDateString("fr-FR", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: "#10b981", flexShrink: 0 }}></span>
-          <span style={{ fontSize: 13, color: "var(--texte-secondaire)" }}>Serveur actif — port 8389</span>
           <button
             style={styles.toggle}
             onClick={() => setTheme(t => t === "sombre" ? "clair" : "sombre")}
@@ -629,44 +652,6 @@ export default function App() {
                 <span style={styles.statsBarreValeur}>{j.nombre}</span>
               </div>
             ))}
-          </div>
-
-          <div style={styles.statsCarte}>
-            <div style={styles.statsTitre}>Top 10 contenus</div>
-            {stats.top_contenus.length === 0 ? (
-              <div style={{ fontSize: 12, color: "var(--texte-secondaire)" }}>Aucun contenu.</div>
-            ) : (
-              stats.top_contenus.map((c, i) => (
-                <div key={`${c.contenu}-${i}`} style={styles.statsBarreLigne}>
-                  <span style={{ ...styles.statsBarreLabel, width: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={c.contenu}>
-                    {c.contenu}
-                  </span>
-                  <span style={styles.statsBarreTrack}>
-                    <span
-                      style={{
-                        ...styles.statsBarreRemplie,
-                        width: `${Math.round((c.nombre / maxContenu) * 100)}%`,
-                      }}
-                    />
-                  </span>
-                  <span style={styles.statsBarreValeur}>{c.nombre}</span>
-                </div>
-              ))
-            )}
-          </div>
-
-          <div style={styles.statsCarte}>
-            <div style={styles.statsTitre}>Heure de pointe</div>
-            {stats.heure_pointe === null ? (
-              <div style={{ fontSize: 13, color: "var(--texte-secondaire)" }}>Aucun scan.</div>
-            ) : (
-              <>
-                <div style={styles.statsValeurForte}>{String(stats.heure_pointe).padStart(2, "0")}h</div>
-                <div style={{ fontSize: 12, color: "var(--texte-secondaire)", marginTop: 4 }}>
-                  {stats.heure_pointe_nombre} scan{stats.heure_pointe_nombre > 1 ? "s" : ""} à cette heure
-                </div>
-              </>
-            )}
           </div>
         </div>
       )}
@@ -800,7 +785,6 @@ export default function App() {
 
       {/* Pied de page */}
       <footer style={styles.piedPage}>
-        <p style={styles.texteSecurite}>Niveau de sécurité : Maximum (Isolation Réseau Privé)</p>
       </footer>
 
       {/* Toasts de nouveaux scans */}
@@ -813,18 +797,22 @@ export default function App() {
         ))}
       </div>
 
-      {/* Console debug */}
-      <div style={styles.debugBarre} onClick={() => setDebugOuvert(!debugOuvert)}>
-        <span style={styles.debugLabel}>console</span>
-        <span style={styles.debugBadge}>{logs.split("\n").length - 1}</span>
-        <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--texte-secondaire)" }}>
-          {debugOuvert ? "▼" : "▲"}
-        </span>
-      </div>
-      <DebugPanel
-        ouvert={debugOuvert}
-        surFermer={() => setDebugOuvert(false)}
-      />
+      {/* Console debug (accessible via 5 taps sur le titre) */}
+      {debugSecret && (
+        <>
+          <div style={styles.debugBarre} onClick={() => setDebugOuvert(!debugOuvert)}>
+            <span style={styles.debugLabel}>console</span>
+            <span style={styles.debugBadge}>{logs.split("\n").length - 1}</span>
+            <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--texte-secondaire)" }}>
+              {debugOuvert ? "▼" : "▲"}
+            </span>
+          </div>
+          <DebugPanel
+            ouvert={debugOuvert}
+            surFermer={() => setDebugOuvert(false)}
+          />
+        </>
+      )}
     </div>
   );
 }
