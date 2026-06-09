@@ -12,9 +12,10 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  # -------------------------------------------------------------------------
-  # 1. Tests Rust (bibliotheque partagee)
-  # -------------------------------------------------------------------------
+  # =========================================================================
+  # ÉTAPE 1 : VALIDER LE CODE (Rapide et léger)
+  # =========================================================================
+
   rust-tests:
     name: Tests Rust
     runs-on: ubuntu-22.04
@@ -33,12 +34,38 @@ jobs:
         working-directory: dashboard-app/app/src-tauri
         run: cargo test --no-default-features --lib --verbose
 
-  # -------------------------------------------------------------------------
-  # 2. Build Android (APK)
-  # -------------------------------------------------------------------------
+  react-tests:
+    name: Tests React (Vitest)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: dashboard-app/app/pnpm-lock.yaml
+
+      - name: Installer pnpm
+        run: npm install -g pnpm@9
+
+      - name: Installer dependances
+        working-directory: dashboard-app/app
+        run: pnpm install --frozen-lockfile
+
+      - name: Lancer les tests
+        working-directory: dashboard-app/app
+        run: pnpm test
+
+  # =========================================================================
+  # ÉTAPE 2 : COMPILATION DES COMPOSANTS (Se lance si l'étape 1 est OK)
+  # =========================================================================
+
   android:
     name: Build Android
     runs-on: ubuntu-22.04
+    needs: [rust-tests, react-tests] # <--- Bloque le build si les tests échouent
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -47,13 +74,13 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Installer Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'pnpm'
+          node-version: "22"
+          cache: "pnpm"
           cache-dependency-path: appCollege/pnpm-lock.yaml
 
       - name: Installer pnpm
@@ -75,12 +102,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # -------------------------------------------------------------------------
-  # 3. Build Tauri Linux
-  # -------------------------------------------------------------------------
   tauri-linux:
     name: Build Tauri (Linux)
     runs-on: ubuntu-22.04
+    needs: [rust-tests, react-tests] # <--- Bloque le build si les tests échouent
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -88,8 +113,8 @@ jobs:
       - name: Installer Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'pnpm'
+          node-version: "22"
+          cache: "pnpm"
           cache-dependency-path: dashboard-app/app/pnpm-lock.yaml
 
       - name: Installer pnpm
@@ -135,12 +160,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # -------------------------------------------------------------------------
-  # 4. Build Tauri Windows
-  # -------------------------------------------------------------------------
   tauri-windows:
     name: Build Tauri (Windows)
     runs-on: windows-latest
+    needs: [rust-tests, react-tests] # <--- Bloque le build si les tests échouent
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -148,8 +171,8 @@ jobs:
       - name: Installer Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'pnpm'
+          node-version: "22"
+          cache: "pnpm"
           cache-dependency-path: dashboard-app/app/pnpm-lock.yaml
 
       - name: Installer pnpm
@@ -184,12 +207,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # -------------------------------------------------------------------------
-  # 5. Build image Docker du serveur headless
-  # -------------------------------------------------------------------------
   docker:
     name: Build image Docker serveur
     runs-on: ubuntu-22.04
+    needs: [rust-tests, react-tests] # <--- Bloque le build si les tests échouent
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -207,30 +228,3 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
-
-  # -------------------------------------------------------------------------
-  # 6. Tests React (Vitest)
-  # -------------------------------------------------------------------------
-  react-tests:
-    name: Tests React (Vitest)
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Installer Node 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-          cache-dependency-path: dashboard-app/app/pnpm-lock.yaml
-
-      - name: Installer pnpm
-        run: npm install -g pnpm@9
-
-      - name: Installer dependances
-        working-directory: dashboard-app/app
-        run: pnpm install --frozen-lockfile
-
-      - name: Lancer les tests
-        working-directory: dashboard-app/app
-        run: pnpm test
