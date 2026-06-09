@@ -1,19 +1,23 @@
 // ApiService.ts
-// Service HTTP adaptive : essaie plusieurs URLs candidates (USB tunnel,
-// Wi-Fi partage, localhost) et garde en cache celle qui repond.
-// La verification periodique permet le failover si une methode tombe.
+// Service HTTP adaptive : decouvre automatiquement le serveur sur le reseau local
+// via le module Kotlin natif (scan reseau + IP device).
+
+import { NativeModules, Platform } from 'react-native';
+
+const { NetworkModule } = NativeModules;
 
 const PORT = 8389;
 const REQUEST_TIMEOUT_MS = 10000;
-const PING_TIMEOUT_MS = 1500;
+const PING_TIMEOUT_MS = 800;
 
 const CANDIDATE_URLS: string[] = [
   `http://127.0.0.1:${PORT}`,
-  `http://10.154.202.45:${PORT}`,
   `http://localhost:${PORT}`,
 ];
 
 let currentBaseUrl: string = CANDIDATE_URLS[0];
+let discoveryEnCours = false;
+let deviceIP: string | null = null;
 
 export const setIP = (ip: string) => {
   const candidate = `http://${ip.trim()}:${PORT}`;
@@ -21,9 +25,11 @@ export const setIP = (ip: string) => {
     CANDIDATE_URLS.unshift(candidate);
   }
   currentBaseUrl = candidate;
+  deviceIP = ip.trim();
 };
 
 export const getIP = (): string => {
+  if (deviceIP) return deviceIP;
   const m = currentBaseUrl.match(/^http:\/\/([^:]+):/);
   return m ? m[1] : '127.0.0.1';
 };
@@ -61,8 +67,37 @@ const pingUrl = async (url: string, timeoutMs: number = PING_TIMEOUT_MS): Promis
   }
 };
 
+// Obtenir l'IP de la tablette via Kotlin natif
+const getDeviceIP = async (): Promise<string | null> => {
+  try {
+    if (Platform.OS === 'android' && NetworkModule) {
+      const ip = await NetworkModule.getDeviceIP();
+      return ip;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+// Scanner le reseau via Kotlin natif (beaucoup plus rapide que JS)
+const scanNetworkNative = async (): Promise<string | null> => {
+  try {
+    if (Platform.OS === 'android' && NetworkModule) {
+      const ip = await NetworkModule.scanNetwork();
+      return ip;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
 export const resolveBaseUrl = async (): Promise<string> => {
+  // D'abord tester l'URL actuelle
   if (await pingUrl(currentBaseUrl)) return currentBaseUrl;
+
+  // Tester les URLs candidates
   for (const url of CANDIDATE_URLS) {
     if (url === currentBaseUrl) continue;
     if (await pingUrl(url)) {
@@ -70,7 +105,34 @@ export const resolveBaseUrl = async (): Promise<string> => {
       return url;
     }
   }
+
+  // Scanner le reseau via Kotlin natif
+  if (!discoveryEnCours) {
+    discoveryEnCours = true;
+    try {
+      const found = await scanNetworkNative();
+      if (found) {
+        const url = `http://${found}:${PORT}`;
+        if (!CANDIDATE_URLS.includes(url)) {
+          CANDIDATE_URLS.unshift(url);
+        }
+        currentBaseUrl = url;
+        return url;
+      }
+    } finally {
+      discoveryEnCours = false;
+    }
+  }
+
   return currentBaseUrl;
+};
+
+// Initialiser l'IP du device au demarrage
+export const initDeviceIP = async (): Promise<void> => {
+  const ip = await getDeviceIP();
+  if (ip && ip !== '127.0.0.1') {
+    deviceIP = ip;
+  }
 };
 
 export const envoyerScan = async (contenu: string): Promise<ScanResult> => {

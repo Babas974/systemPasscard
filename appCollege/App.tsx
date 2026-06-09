@@ -17,7 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from './theme';
 import { createStyles } from './styles';
-import { envoyerScan, testerConnexion, setIP, getApiBaseUrl, resolveBaseUrl, getIP } from './ApiService';
+import { envoyerScan, testerConnexion, setIP, getApiBaseUrl, resolveBaseUrl, getIP, initDeviceIP } from './ApiService';
 import {
   loadIP,
   loadQueue,
@@ -182,6 +182,8 @@ export function App() {
     const init = async () => {
       try {
         logInfo('App', `Demarrage v${appVersion}`);
+
+        await initDeviceIP();
 
         const savedIP = await loadIP();
         if (savedIP && savedIP !== '127.0.0.1') {
