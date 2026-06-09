@@ -413,4 +413,67 @@ export const createStyles = (theme: Theme) =>
       textAlign: 'center',
       marginTop: 20,
     },
+    // Barre de connexion discrète
+    barreConnexion: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: 20,
+      marginBottom: 16,
+      alignSelf: 'center',
+    },
+    dotConnexion: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      marginRight: 6,
+    },
+    texteConnexion: {
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    // Panneau debug secret
+    debugPanel: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: '#1a1a2e',
+      borderTopWidth: 2,
+      borderTopColor: '#e94560',
+      paddingBottom: 20,
+    },
+    debugHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      backgroundColor: '#16162a',
+      borderBottomWidth: 1,
+      borderBottomColor: '#2d2d44',
+    },
+    debugTitre: {
+      color: '#e94560',
+      fontSize: 12,
+      fontWeight: 'bold',
+      fontFamily: 'monospace',
+    },
+    debugFermer: {
+      color: '#94a3b8',
+      fontSize: 14,
+      fontWeight: 'bold',
+    },
+    debugContenu: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    debugLigne: {
+      color: '#94a3b8',
+      fontSize: 11,
+      fontFamily: 'monospace',
+      marginBottom: 4,
+    },
   });

@@ -17,7 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from './theme';
 import { createStyles } from './styles';
-import { envoyerScan, testerConnexion, setIP, getApiBaseUrl, resolveBaseUrl } from './ApiService';
+import { envoyerScan, testerConnexion, setIP, getApiBaseUrl, resolveBaseUrl, getIP } from './ApiService';
 import {
   loadIP,
   loadQueue,
@@ -108,6 +108,11 @@ export function App() {
   const [file, setFile] = useState<QueueEntry[]>([]);
   const [historique, setHistorique] = useState<HistoryEntry[]>([]);
 
+  const [debugMode, setDebugMode] = useState(false);
+  const [tapCount, setTapCount] = useState(0);
+  const [lastTapTime, setLastTapTime] = useState(0);
+  const [latence, setLatence] = useState<number | null>(null);
+
   const traitementEnCours = useRef(false);
   const envoiEnCours = statut === 'ENVOI';
 
@@ -117,6 +122,23 @@ export function App() {
       return next.slice(0, 50);
     });
   }, []);
+
+  const handleTitreTap = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTapTime > 1000) {
+      setTapCount(1);
+    } else {
+      setTapCount((prev) => {
+        const newCount = prev + 1;
+        if (newCount >= 5) {
+          setDebugMode((d) => !d);
+          return 0;
+        }
+        return newCount;
+      });
+    }
+    setLastTapTime(now);
+  }, [lastTapTime]);
 
   const mettreAJourHistorique = useCallback(
     (id: string, patch: Partial<HistoryEntry>) => {
@@ -185,10 +207,12 @@ export function App() {
 
   useEffect(() => {
     const tick = async () => {
+      const start = Date.now();
       const activeUrl = await resolveBaseUrl();
       setIpPC(activeUrl);
       const ok = await testerConnexion();
       setPcConnecte(ok);
+      setLatence(Date.now() - start);
     };
     tick();
     const interval = setInterval(tick, CONNEXION_CHECK_MS);
@@ -361,11 +385,15 @@ export function App() {
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.carteFormulaire}>
           <View style={styles.headerRow}>
-            <View style={{ flex: 1 }}>
+            <TouchableOpacity
+              style={{ flex: 1 }}
+              onPress={handleTitreTap}
+              activeOpacity={1}
+            >
               <Text style={styles.titrePrincipal}>
                 Passage a l'infirmerie
               </Text>
-            </View>
+            </TouchableOpacity>
             {file.length > 0 && (
               <TouchableOpacity
                 style={styles.badge}
@@ -386,33 +414,19 @@ export function App() {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.sousTitre}>
-            Remplis bien les champs, puis clique sur Valider.
-          </Text>
-
-          <View
-            style={[
-              styles.boutonChangerPC,
-              {
-                backgroundColor: pcConnecte
-                  ? theme.successBg
-                  : theme.inputBackground,
-                borderColor: pcConnecte ? theme.successBorder : theme.border,
-                borderWidth: 1,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.texteBoutonPC,
-                {
-                  color: pcConnecte ? theme.successText : theme.textSecondary,
-                },
-              ]}
-            >
-              {pcConnecte
-                ? `PC connecte (${ipPC})`
-                : `PC injoignable (${ipPC})`}
+          <View style={[
+            styles.barreConnexion,
+            { backgroundColor: pcConnecte ? theme.successBg : theme.errorBg },
+          ]}>
+            <View style={[
+              styles.dotConnexion,
+              { backgroundColor: pcConnecte ? theme.successBorder : theme.errorBorder },
+            ]} />
+            <Text style={[
+              styles.texteConnexion,
+              { color: pcConnecte ? theme.successText : theme.errorText },
+            ]}>
+              {pcConnecte ? 'Connecte' : 'Hors ligne'}
             </Text>
           </View>
 
@@ -544,6 +558,25 @@ export function App() {
           </View>
         </View>
       </ScrollView>
+
+      {debugMode && (
+        <View style={styles.debugPanel}>
+          <View style={styles.debugHeader}>
+            <Text style={styles.debugTitre}>DEBUG MODE</Text>
+            <TouchableOpacity onPress={() => setDebugMode(false)}>
+              <Text style={styles.debugFermer}>X</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.debugContenu}>
+            <Text style={styles.debugLigne}>IP: {getIP()}</Text>
+            <Text style={styles.debugLigne}>URL: {getApiBaseUrl()}</Text>
+            <Text style={styles.debugLigne}>Latence: {latence !== null ? `${latence}ms` : '...'}</Text>
+            <Text style={styles.debugLigne}>PC: {pcConnecte ? 'Connecte' : 'Deconnecte'}</Text>
+            <Text style={styles.debugLigne}>File: {file.length} en attente</Text>
+            <Text style={styles.debugLigne}>Version: {appVersion}</Text>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
