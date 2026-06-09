@@ -4,7 +4,7 @@
 use crate::db;
 use actix_web::{web, HttpResponse};
 use rusqlite::{params, Connection};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
