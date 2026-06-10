@@ -23,7 +23,7 @@
 ```
 +----------------------+      Wi-Fi prive       +-----------------------+
 |   TABLETTE ANDROID   |   <----------------->   |   PC (Windows/Linux)  |
-|                      |       HTTP :8080        |                       |
+|                      |       HTTP :8389        |                       |
 |  appCollege          |                         |  App native Tauri     |
 |  (React Native)      |   POST /scan            |  + serveur HTTP       |
 |                      |   GET  /scans           |  + SQLite (scans.db)  |
@@ -75,7 +75,7 @@ Le binaire executable est dans :
 dashboard-app\app\src-tauri\target\release\app.exe
 ```
 
-Double-cliquer sur `app.exe` : la fenetre s'ouvre et le serveur HTTP demarre automatiquement sur le port 8080.
+Double-cliquer sur `app.exe` : la fenetre s'ouvre et le serveur HTTP demarre automatiquement sur le port 8389.
 
 ---
 
@@ -207,20 +207,20 @@ adb -s <serial> install -r app-debug.apk
 ### Verifier la sante du serveur
 
 ```bash
-curl http://192.168.137.1:8080/health
+curl http://192.168.137.1:8389/health
 # {"statut":"ok",...}
 ```
 
 ### Lister les scans
 
 ```bash
-curl http://192.168.137.1:8080/scans | jq
+curl http://192.168.137.1:8389/scans | jq
 ```
 
 ### Envoyer un scan de test
 
 ```bash
-curl -X POST http://192.168.137.1:8080/scan \
+curl -X POST http://192.168.137.1:8389/scan \
   -H "Content-Type: application/json" \
   -d '{"contenu": "DUPONT Jean"}'
 # {"statut":"ok","message":"Scan enregistre: DUPONT Jean"}
@@ -229,14 +229,14 @@ curl -X POST http://192.168.137.1:8080/scan \
 ### Supprimer un scan
 
 ```bash
-curl -X DELETE http://192.168.137.1:8080/scan/5
+curl -X DELETE http://192.168.137.1:8389/scan/5
 # {"statut":"ok"}
 ```
 
 ### Inserer 20 scans de test (seed)
 
 ```bash
-curl -X POST http://192.168.137.1:8080/seed
+curl -X POST http://192.168.137.1:8389/seed
 # {"statut":"ok","inseres":20}
 ```
 
@@ -264,10 +264,10 @@ Apres lancement, ouvrir l'app Tauri : les scans apparaissent dans le tableau et 
 
 - Verifier que le hotspot est bien actif sur le PC
 - Verifier que la tablette est bien connectee au reseau `Infirmerie`
-- Verifier que le pare-feu Windows / Linux n'bloque pas le port 8080 :
-  - Windows : `netsh advfirewall firewall add rule name="Pont Saisie 8080" dir=in action=allow protocol=TCP localport=8080`
-  - Fedora : `sudo firewall-cmd --permanent --add-port=8080/tcp && sudo firewall-cmd --reload`
-- Tester depuis le PC : `curl http://localhost:8080/health`
+- Verifier que le pare-feu Windows / Linux n'bloque pas le port 8389 :
+  - Windows : `netsh advfirewall firewall add rule name="Pont Saisie 8389" dir=in action=allow protocol=TCP localport=8389`
+  - Fedora : `sudo firewall-cmd --permanent --add-port=8389/tcp && sudo firewall-cmd --reload`
+- Tester depuis le PC : `curl http://localhost:8389/health`
 
 ### L'app Tauri ne compile pas (Linux)
 
@@ -277,16 +277,16 @@ sudo dnf install webkit2gtk4.1-devel libsoup3-devel \
   javascriptcoregtk4.1-devel libgtk-3-devel
 ```
 
-### Le serveur HTTP ne demarre pas : port 8080 occupe
+### Le serveur HTTP ne demarre pas : port 8389 occupe
 
 ```bash
 # Identifier le processus
 # Linux / Fedora
-sudo lsof -i :8080
-sudo ss -tlnp | grep 8080
+sudo lsof -i :8389
+sudo ss -tlnp | grep 8389
 
 # Windows
-netstat -ano | findstr :8080
+netstat -ano | findstr :8389
 taskkill /PID <pid> /F
 ```
 

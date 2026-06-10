@@ -175,20 +175,36 @@ fn main() {
                 rt.block_on(async {
                     let data = actix_web::web::Data::new(http_state);
                     actix_web::HttpServer::new(move || {
-                        let cors = actix_cors::Cors::permissive();
-                        actix_web::App::new()
+                        let cors = actix_cors::Cors::default()
+                            .allowed_origin_fn(|origin, _req| {
+                                let origin_str = origin.to_str().unwrap_or("");
+                                // Autoriser uniquement le reseau local
+                                origin_str.starts_with("http://127.0.0.1")
+                                    || origin_str.starts_with("http://localhost")
+                                    || origin_str.starts_with("http://192.168.")
+                                    || origin_str.starts_with("http://10.")
+                                    || origin_str.starts_with("http://172.")
+                            })
+                            .allowed_methods(vec!["GET", "POST", "DELETE"])
+                            .allowed_header(actix_web::http::header::CONTENT_TYPE);
+                        let mut app = actix_web::App::new()
                             .wrap(cors)
                             .app_data(data.clone())
                             .route("/health", actix_web::web::get().to(routes::health))
                             .route("/scan", actix_web::web::post().to(routes::post_scan))
                             .route("/scans", actix_web::web::get().to(routes::get_scans))
                             .route("/scan/{id}", actix_web::web::delete().to(routes::delete_scan))
-                            .route("/seed", actix_web::web::post().to(routes::seed))
                             .route("/debug/log", actix_web::web::post().to(routes::post_log))
                             .route("/debug/logs", actix_web::web::get().to(routes::get_logs))
-                            .route("/debug/logs", actix_web::web::delete().to(routes::delete_logs))
+                            .route("/debug/logs", actix_web::web::delete().to(routes::delete_logs));
+                        // Route /seed uniquement en debug
+                        #[cfg(debug_assertions)]
+                        {
+                            app = app.route("/seed", actix_web::web::post().to(routes::seed));
+                        }
+                        app
                     })
-                    .bind("0.0.0.0:8389")
+                    .bind("0.0.0.0:8389") // SYNC: ApiService.ts, NetworkModule.kt
                     .expect("Impossible de demarrer le serveur sur le port 8389")
                     .run()
                     .await

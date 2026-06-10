@@ -16,7 +16,7 @@
 |  +--------------+---------------+  |   Wi-Fi     |  +--------------+---------------+  |
 |  |  ApiService.ts               |  |   HTTP      |  | Serveur HTTP (actix-web)     |  |
 |  |  - fetch POST /scan          |  +------------>|  |  - POST /scan                |  |
-|  |  - fetch GET /scans          |  |   Port 8080 |  |  - GET /scans                 |  |
+|  |  - fetch GET /scans          |  |   Port 8389 |  |  - GET /scans                 |  |
 |  |  - Test connexion            |  |             |  |  - DELETE /scan/{id}          |  |
 |  +------------------------------+  |             |  +--------------+---------------+  |
 |                                    |             |                 |                  |
@@ -94,7 +94,7 @@ appCollege/
 
 ```typescript
 const PC_IP = "192.168.137.1";  // IP par defaut du point d'acces
-const PORT = 8080;
+const PORT = 8389;
 
 export const envoyerScan = async (contenu: string): Promise<ScanResult> => {
   const response = await fetch(`http://${PC_IP}:${PORT}/scan`, {
@@ -213,7 +213,7 @@ fn init_db() -> Arc<Mutex<Connection>> {
 }
 ```
 
-#### Serveur HTTP (actix-web) sur port 8080
+#### Serveur HTTP (actix-web) sur port 8389
 ```rust
 // POST /scan — Recoit un scan de la tablette
 async fn route_post_scan(data, body) -> HttpResponse {
@@ -250,7 +250,7 @@ Interface complete de gestion des scans :
 ```
 +-----------------------------------------------+
 |  Infirmerie - Mardi 4 juin 2026                |
-|  [Vert] Serveur actif - port 8080              |
+|  [Vert] Serveur actif - port 8389              |
 +-----------------------------------------------+
 |  +-----------+  +-----------+                  |
 |  |     5     |  |    127    |                  |
@@ -387,13 +387,13 @@ cd dashboard-app/app && pnpm tauri dev
 ### Tester le serveur HTTP manuellement
 ```bash
 # Depuis le PC
-curl http://localhost:8080/scans
+curl http://localhost:8389/scans
 
 # Depuis la tablette (ou autre appareil sur le meme reseau)
-curl http://192.168.137.1:8080/scans
+curl http://192.168.137.1:8389/scans
 
 # Envoyer un scan de test
-curl -X POST http://localhost:8080/scan \
+curl -X POST http://localhost:8389/scan \
   -H "Content-Type: application/json" \
   -d '{"contenu": "TEST Manuel"}'
 ```

@@ -3,10 +3,11 @@
 // via le module Kotlin natif (scan reseau + IP device).
 
 import { NativeModules, Platform } from 'react-native';
+import { logInfo, logError } from './Logger';
 
 const { NetworkModule } = NativeModules;
 
-const PORT = 8389;
+const PORT = 8389; // SYNC: NetworkModule.kt, main.rs
 const REQUEST_TIMEOUT_MS = 10000;
 const PING_TIMEOUT_MS = 800;
 
@@ -101,6 +102,7 @@ export const resolveBaseUrl = async (): Promise<string> => {
   for (const url of CANDIDATE_URLS) {
     if (url === currentBaseUrl) continue;
     if (await pingUrl(url)) {
+      logInfo('ApiService', `URL candidat active: ${url}`);
       currentBaseUrl = url;
       return url;
     }
@@ -110,15 +112,18 @@ export const resolveBaseUrl = async (): Promise<string> => {
   if (!discoveryEnCours) {
     discoveryEnCours = true;
     try {
+      logInfo('ApiService', 'Scan reseau en cours...');
       const found = await scanNetworkNative();
       if (found) {
         const url = `http://${found}:${PORT}`;
+        logInfo('ApiService', `Serveur trouve via scan: ${url}`);
         if (!CANDIDATE_URLS.includes(url)) {
           CANDIDATE_URLS.unshift(url);
         }
         currentBaseUrl = url;
         return url;
       }
+      logError('ApiService', 'Aucun serveur trouve via scan reseau');
     } finally {
       discoveryEnCours = false;
     }
@@ -136,38 +141,52 @@ export const initDeviceIP = async (): Promise<void> => {
 };
 
 export const envoyerScan = async (contenu: string): Promise<ScanResult> => {
-  const baseUrl = await resolveBaseUrl();
-  const url = `${baseUrl}/scan`;
+  const sendOnce = async (): Promise<ScanResult> => {
+    const baseUrl = await resolveBaseUrl();
+    const url = `${baseUrl}/scan`;
 
-  try {
-    const response = await fetchWithTimeout(
-      url,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contenu }),
-      },
-      REQUEST_TIMEOUT_MS,
-    );
+    try {
+      const response = await fetchWithTimeout(
+        url,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contenu }),
+        },
+        REQUEST_TIMEOUT_MS,
+      );
 
-    if (!response.ok) {
-      const err = await response
-        .json()
-        .catch(() => ({ erreur: 'Erreur serveur' }));
+      if (!response.ok) {
+        const err = await response
+          .json()
+          .catch(() => ({ erreur: 'Erreur serveur' }));
+        return {
+          statut: 'erreur',
+          message: err.erreur || 'Erreur serveur',
+          erreur: err.erreur,
+        };
+      }
+
+      return await response.json();
+    } catch (e) {
       return {
         statut: 'erreur',
-        message: err.erreur || 'Erreur serveur',
-        erreur: err.erreur,
+        message: `Impossible de joindre le PC: ${baseUrl}`,
       };
     }
+  };
 
-    return await response.json();
-  } catch (e) {
-    return {
-      statut: 'erreur',
-      message: `Impossible de joindre le PC: ${baseUrl}`,
-    };
+  const first = await sendOnce();
+  if (first.statut === 'ok') return first;
+
+  logError('ApiService', `Envoi echoue (1ere tentative): ${first.message}`);
+  // Retry immediat apres 500ms
+  await new Promise((r) => setTimeout(r, 500));
+  const second = await sendOnce();
+  if (second.statut !== 'ok') {
+    logError('ApiService', `Envoi echoue (2eme tentative): ${second.message}`);
   }
+  return second;
 };
 
 export const testerConnexion = async (): Promise<boolean> => {

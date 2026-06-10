@@ -13,6 +13,8 @@ import {
   Alert,
   StatusBar,
   Vibration,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from './theme';
@@ -65,7 +67,53 @@ class ErrorBoundary extends React.Component<
 
   render() {
     if (this.state.erreur) {
-      return null;
+      return (
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: '#1a1a2e',
+            padding: 24,
+          }}
+        >
+          <Text
+            style={{
+              color: '#e74c3c',
+              fontSize: 20,
+              fontWeight: 'bold',
+              marginBottom: 12,
+              textAlign: 'center',
+            }}
+          >
+            Oups, une erreur est survenue
+          </Text>
+          <Text
+            style={{
+              color: '#ccc',
+              fontSize: 14,
+              textAlign: 'center',
+              marginBottom: 24,
+              lineHeight: 20,
+            }}
+          >
+            {this.state.erreur.message || 'Erreur inconnue'}
+          </Text>
+          <TouchableOpacity
+            onPress={() => this.setState({ erreur: null })}
+            style={{
+              backgroundColor: '#3498db',
+              paddingHorizontal: 24,
+              paddingVertical: 12,
+              borderRadius: 8,
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+              Recommencer
+            </Text>
+          </TouchableOpacity>
+        </View>
+      );
     }
     return this.props.children;
   }
@@ -114,6 +162,7 @@ export function App() {
   const [latence, setLatence] = useState<number | null>(null);
 
   const traitementEnCours = useRef(false);
+  const validationEnCours = useRef(false);
   const envoiEnCours = statut === 'ENVOI';
 
   const ajouterHistorique = useCallback((entree: HistoryEntry) => {
@@ -124,6 +173,7 @@ export function App() {
   }, []);
 
   const handleTitreTap = useCallback(() => {
+    if (!__DEV__) return;
     const now = Date.now();
     if (now - lastTapTime > 1000) {
       setTapCount(1);
@@ -241,6 +291,26 @@ export function App() {
     saveHistory(historique);
   }, [historique]);
 
+  // Reconnexion auto quand l'app revient en foreground (apres veille)
+  useEffect(() => {
+    const handleAppStateChange = (next: AppStateStatus) => {
+      if (next === 'active') {
+        logInfo('App', 'Retour en foreground, reconnexion auto');
+        resolveBaseUrl().then((url) => {
+          setIpPC(url);
+          testerConnexion().then((ok) => {
+            setPcConnecte(ok);
+            if (ok) {
+              traiterFileRef.current();
+            }
+          });
+        });
+      }
+    };
+    const sub = AppState.addEventListener('change', handleAppStateChange);
+    return () => sub.remove();
+  }, []);
+
   const construireEtEnvoyer = async (contenu: string, historyId: string) => {
     const resultat = await envoyerScan(contenu);
     if (resultat.statut === 'ok') {
@@ -273,59 +343,65 @@ export function App() {
   };
 
   const handleValider = async () => {
+    if (validationEnCours.current) return;
     if (!nom.trim() || !prenom.trim()) {
       Alert.alert('Erreur', 'Merci de remplir ton nom et ton prenom.');
       return;
     }
 
-    const nomMaj = nom.trim().toUpperCase();
-    const prenomPropre = prenom.trim();
-    const texteAEnvoyer = `${nomMaj} ${prenomPropre}`;
+    validationEnCours.current = true;
+    try {
+      const nomMaj = nom.trim().toUpperCase();
+      const prenomPropre = prenom.trim();
+      const texteAEnvoyer = `${nomMaj} ${prenomPropre}`;
 
-    setStatut('ENVOI');
-    setStatutMsg('');
+      setStatut('ENVOI');
+      setStatutMsg('');
 
-    if (!pcConnecte) {
-      const entree = mettreEnFile(texteAEnvoyer);
-      setNom('');
-      setPrenom('');
-      setStatut('QUEUED');
-      setStatutMsg(
-        `PC injoignable. Scan mis en file d'attente (${entree.contenu}).`,
-      );
-      vibrerErreur();
-      setTimeout(() => setStatut('IDLE'), 4000);
-      return;
-    }
+      if (!pcConnecte) {
+        const entree = mettreEnFile(texteAEnvoyer);
+        setNom('');
+        setPrenom('');
+        setStatut('QUEUED');
+        setStatutMsg(
+          `PC injoignable. Scan mis en file d'attente (${entree.contenu}).`,
+        );
+        vibrerErreur();
+        setTimeout(() => setStatut('IDLE'), 4000);
+        return;
+      }
 
-    const tempId = generateId();
-    const histTemp: HistoryEntry = {
-      id: tempId,
-      contenu: texteAEnvoyer,
-      creeLe: Date.now(),
-      statut: 'en_attente',
-    };
-    ajouterHistorique(histTemp);
-
-    const ok = await construireEtEnvoyer(texteAEnvoyer, tempId);
-    if (ok) {
-      setNom('');
-      setPrenom('');
-      setStatut('SUCCESS');
-      setStatutMsg('Ton passage a bien ete enregistre. Merci !');
-      setTimeout(() => setStatut('IDLE'), 3000);
-    } else {
-      const entree: QueueEntry = {
+      const tempId = generateId();
+      const histTemp: HistoryEntry = {
         id: tempId,
         contenu: texteAEnvoyer,
         creeLe: Date.now(),
+        statut: 'en_attente',
       };
-      setFile((prev) => [...prev, entree]);
-      setStatut('QUEUED');
-      setStatutMsg(
-        'Envoi echoue. Scan mis en file d\'attente pour re-essai automatique.',
-      );
-      setTimeout(() => setStatut('IDLE'), 4000);
+      ajouterHistorique(histTemp);
+
+      const ok = await construireEtEnvoyer(texteAEnvoyer, tempId);
+      if (ok) {
+        setNom('');
+        setPrenom('');
+        setStatut('SUCCESS');
+        setStatutMsg('Ton passage a bien ete enregistre. Merci !');
+        setTimeout(() => setStatut('IDLE'), 3000);
+      } else {
+        const entree: QueueEntry = {
+          id: tempId,
+          contenu: texteAEnvoyer,
+          creeLe: Date.now(),
+        };
+        setFile((prev) => [...prev, entree]);
+        setStatut('QUEUED');
+        setStatutMsg(
+          'Envoi echoue. Scan mis en file d\'attente pour re-essai automatique.',
+        );
+        setTimeout(() => setStatut('IDLE'), 4000);
+      }
+    } finally {
+      validationEnCours.current = false;
     }
   };
 

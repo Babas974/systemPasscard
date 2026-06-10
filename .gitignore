@@ -8,3 +8,6 @@ dist/
 
 # Environnement local
 .env
+
+# SQLite databases
+*.db

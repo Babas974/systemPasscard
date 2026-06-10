@@ -11,12 +11,16 @@ import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.InetAddress
 import java.net.Socket
+import java.util.concurrent.Executors
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.ConcurrentLinkedQueue
 
 @ReactModule(name = NetworkModule.NAME)
 class NetworkModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
     companion object {
         const val NAME = "NetworkModule"
-        private const val PORT = 8389
+        private const val PORT = 8389 // SYNC: ApiService.ts, main.rs
         private const val TIMEOUT_MS = 500
     }
 
@@ -43,41 +47,36 @@ class NetworkModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
 
             val parts = baseIP.split(".")
             val prefix = "${parts[0]}.${parts[1]}.${parts[2]}"
-            val found = mutableListOf<String>()
+            val found = ConcurrentLinkedQueue<String>()
 
-            // Scanner en parallele avec des threads
-            val threads = mutableListOf<Thread>()
-            val lock = Any()
+            // Pool de 20 threads max (pas 254 simultanes)
+            val pool = Executors.newFixedThreadPool(20)
+            val latch = CountDownLatch(254)
 
             for (i in 1..254) {
-                val ip = "$prefix.$i"
-                val thread = Thread {
+                pool.submit {
                     try {
+                        val ip = "$prefix.$i"
                         val socket = Socket()
-                        socket.connect(java.net.InetSocketAddress(ip, PORT), TIMEOUT_MS)
-                        socket.close()
-                        synchronized(lock) {
+                        try {
+                            socket.connect(java.net.InetSocketAddress(ip, PORT), TIMEOUT_MS)
                             found.add(ip)
+                        } finally {
+                            try { socket.close() } catch (_: Exception) {}
                         }
-                    } catch (_: Exception) {}
-                }
-                threads.add(thread)
-                thread.start()
-            }
-
-            // Attendre que tous les threads finissent (max 5s)
-            val timeout = System.currentTimeMillis() + 5000
-            for (thread in threads) {
-                val remaining = timeout - System.currentTimeMillis()
-                if (remaining > 0) {
-                    thread.join(remaining)
-                } else {
-                    thread.interrupt()
+                    } finally {
+                        latch.countDown()
+                    }
                 }
             }
 
-            if (found.isNotEmpty()) {
-                promise.resolve(found.first())
+            // Attendre max 5s que le pool termine
+            latch.await(5, TimeUnit.SECONDS)
+            pool.shutdownNow()
+
+            val result = found.firstOrNull()
+            if (result != null) {
+                promise.resolve(result)
             } else {
                 promise.reject("NOT_FOUND", "Aucun serveur trouve sur le reseau")
             }
