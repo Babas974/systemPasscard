@@ -22,6 +22,7 @@ class NetworkModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
         const val NAME = "NetworkModule"
         private const val PORT = 8389 // SYNC: ApiService.ts, main.rs
         private const val TIMEOUT_MS = 500
+        private const val PING_TIMEOUT_MS = 200
     }
 
     override fun getName(): String = NAME
@@ -33,6 +34,24 @@ class NetworkModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
             promise.resolve(ip)
         } catch (e: Exception) {
             promise.reject("ERROR", "Impossible de recuperer l'IP", e)
+        }
+    }
+
+    @ReactMethod
+    fun pingServer(ip: String, promise: Promise) {
+        try {
+            val socket = Socket()
+            try {
+                socket.connect(java.net.InetSocketAddress(ip, PORT), PING_TIMEOUT_MS)
+                socket.close()
+                promise.resolve(true)
+            } catch (_: Exception) {
+                promise.resolve(false)
+            } finally {
+                try { socket.close() } catch (_: Exception) {}
+            }
+        } catch (e: Exception) {
+            promise.resolve(false)
         }
     }
 

@@ -1,6 +1,6 @@
 // ApiService.ts
 // Service HTTP adaptive : decouvre automatiquement le serveur sur le reseau local
-// via le module Kotlin natif (scan reseau + IP device).
+// via le module Kotlin natif (scan reseau + ping natif + IP device).
 
 import { NativeModules, Platform } from 'react-native';
 import { logInfo, logError } from './Logger';
@@ -20,6 +20,20 @@ let currentBaseUrl: string = CANDIDATE_URLS[0];
 let discoveryEnCours = false;
 let deviceIP: string | null = null;
 
+// Etat de reconnexion
+let connecte = false;
+let tentativeEchecs = 0;
+let listeners: Array<(connecte: boolean) => void> = [];
+
+export const onConnectionChange = (cb: (connecte: boolean) => void) => {
+  listeners.push(cb);
+  return () => { listeners = listeners.filter((l) => l !== cb); };
+};
+
+const notifyListeners = () => {
+  for (const l of listeners) l(connecte);
+};
+
 export const setIP = (ip: string) => {
   const candidate = `http://${ip.trim()}:${PORT}`;
   if (!CANDIDATE_URLS.includes(candidate)) {
@@ -38,6 +52,14 @@ export const getIP = (): string => {
 export const getApiBaseUrl = (): string => currentBaseUrl;
 
 export const getCandidateUrls = (): string[] => [...CANDIDATE_URLS];
+
+export const isConnecte = (): boolean => connecte;
+
+export const getBackoffMs = (): number => {
+  if (connecte) return 0;
+  const delays = [2000, 4000, 8000, 16000, 30000];
+  return delays[Math.min(tentativeEchecs, delays.length - 1)];
+};
 
 export interface ScanResult {
   statut: 'ok' | 'erreur';
@@ -59,6 +81,17 @@ const fetchWithTimeout = async (
   }
 };
 
+// Ping natif Kotlin : 200ms au lieu de 800ms avec fetch
+const pingNative = async (ip: string): Promise<boolean> => {
+  try {
+    if (Platform.OS === 'android' && NetworkModule) {
+      return await NetworkModule.pingServer(ip);
+    }
+  } catch {}
+  return false;
+};
+
+// Ping HTTP classique (fallback)
 const pingUrl = async (url: string, timeoutMs: number = PING_TIMEOUT_MS): Promise<boolean> => {
   try {
     const res = await fetchWithTimeout(`${url}/scans`, { method: 'GET' }, timeoutMs);
@@ -66,6 +99,12 @@ const pingUrl = async (url: string, timeoutMs: number = PING_TIMEOUT_MS): Promis
   } catch {
     return false;
   }
+};
+
+// Extraire l'IP d'une URL candidate
+const extractIP = (url: string): string | null => {
+  const m = url.match(/^http:\/\/([^:]+):\d+$/);
+  return m ? m[1] : null;
 };
 
 // Obtenir l'IP de la tablette via Kotlin natif
@@ -81,7 +120,7 @@ const getDeviceIP = async (): Promise<string | null> => {
   }
 };
 
-// Scanner le reseau via Kotlin natif (beaucoup plus rapide que JS)
+// Scanner le reseau via Kotlin natif
 const scanNetworkNative = async (): Promise<string | null> => {
   try {
     if (Platform.OS === 'android' && NetworkModule) {
@@ -94,21 +133,49 @@ const scanNetworkNative = async (): Promise<string | null> => {
   }
 };
 
-export const resolveBaseUrl = async (): Promise<string> => {
-  // D'abord tester l'URL actuelle
-  if (await pingUrl(currentBaseUrl)) return currentBaseUrl;
+// Test rapide : ping natif sur l'URL courante
+const testCurrentUrl = async (): Promise<boolean> => {
+  const ip = extractIP(currentBaseUrl);
+  if (ip) {
+    return pingNative(ip);
+  }
+  return pingUrl(currentBaseUrl, PING_TIMEOUT_MS);
+};
 
-  // Tester les URLs candidates
-  for (const url of CANDIDATE_URLS) {
-    if (url === currentBaseUrl) continue;
-    if (await pingUrl(url)) {
-      logInfo('ApiService', `URL candidat active: ${url}`);
+// Resolution rapide de l'URL active
+export const resolveBaseUrl = async (): Promise<string> => {
+  // 1. Tester l'URL courante (ping natif 200ms)
+  if (await testCurrentUrl()) {
+    if (!connecte) {
+      connecte = true;
+      tentativeEchecs = 0;
+      notifyListeners();
+      logInfo('ApiService', `Reconnecte a ${currentBaseUrl}`);
+    }
+    return currentBaseUrl;
+  }
+
+  // 2. Tester les URLs candidates (ping natif en parallele)
+  const tests = CANDIDATE_URLS.filter((u) => u !== currentBaseUrl).map(async (url) => {
+    const ip = extractIP(url);
+    const ok = ip ? await pingNative(ip) : await pingUrl(url, PING_TIMEOUT_MS);
+    return { url, ok };
+  });
+  const results = await Promise.all(tests);
+  for (const { url, ok } of results) {
+    if (ok) {
       currentBaseUrl = url;
+      if (!connecte) {
+        connecte = true;
+        tentativeEchecs = 0;
+        notifyListeners();
+        logInfo('ApiService', `Reconnecte a ${url}`);
+      }
       return url;
     }
   }
 
-  // Scanner le reseau via Kotlin natif
+  // 3. Scan reseau complet (seulement si pas de discovery en cours)
   if (!discoveryEnCours) {
     discoveryEnCours = true;
     try {
@@ -121,14 +188,25 @@ export const resolveBaseUrl = async (): Promise<string> => {
           CANDIDATE_URLS.unshift(url);
         }
         currentBaseUrl = url;
+        connecte = true;
+        tentativeEchecs = 0;
+        notifyListeners();
         return url;
       }
-      logError('ApiService', 'Aucun serveur trouve via scan reseau');
     } finally {
       discoveryEnCours = false;
     }
   }
 
+  // 4. Echec total
+  if (connecte) {
+    connecte = false;
+    tentativeEchecs++;
+    notifyListeners();
+    logError('ApiService', `Deconnexion detectee (tentative #${tentativeEchecs})`);
+  } else {
+    tentativeEchecs++;
+  }
   return currentBaseUrl;
 };
 
@@ -191,5 +269,6 @@ export const envoyerScan = async (contenu: string): Promise<ScanResult> => {
 
 export const testerConnexion = async (): Promise<boolean> => {
   const baseUrl = await resolveBaseUrl();
-  return pingUrl(baseUrl, PING_TIMEOUT_MS);
+  const ip = extractIP(baseUrl);
+  return ip ? pingNative(ip) : pingUrl(baseUrl, PING_TIMEOUT_MS);
 };

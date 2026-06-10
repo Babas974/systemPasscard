@@ -19,7 +19,18 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from './theme';
 import { createStyles } from './styles';
-import { envoyerScan, testerConnexion, setIP, getApiBaseUrl, resolveBaseUrl, getIP, initDeviceIP } from './ApiService';
+import {
+  envoyerScan,
+  testerConnexion,
+  setIP,
+  getApiBaseUrl,
+  resolveBaseUrl,
+  getIP,
+  initDeviceIP,
+  isConnecte,
+  getBackoffMs,
+  onConnectionChange,
+} from './ApiService';
 import {
   loadIP,
   loadQueue,
@@ -122,8 +133,7 @@ class ErrorBoundary extends React.Component<
 type Statut = 'IDLE' | 'SUCCESS' | 'ENVOI' | 'ERROR' | 'QUEUED';
 type Screen = 'main' | 'settings';
 
-const CONNEXION_CHECK_MS = 5000;
-const QUEUE_TRAITEMENT_MS = 5000;
+const QUEUE_TRAITEMENT_MS = 3000;
 
 const vibrerSucces = () => Vibration.vibrate(60);
 
@@ -253,18 +263,39 @@ export function App() {
     init();
   }, []);
 
+  // Surveillance de la connexion avec backoff exponentiel
   useEffect(() => {
-    const tick = async () => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let actif = true;
+
+    const check = async () => {
+      if (!actif) return;
       const start = Date.now();
       const activeUrl = await resolveBaseUrl();
       setIpPC(activeUrl);
-      const ok = await testerConnexion();
-      setPcConnecte(ok);
+      setPcConnecte(isConnecte());
       setLatence(Date.now() - start);
+
+      // Programmer le prochain check selon le backoff
+      const delay = getBackoffMs() || 3000;
+      if (actif) {
+        timer = setTimeout(check, delay);
+      }
     };
-    tick();
-    const interval = setInterval(tick, CONNEXION_CHECK_MS);
-    return () => clearInterval(interval);
+
+    check();
+    return () => {
+      actif = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
+  // Ecouter les changements de connexion depuis ApiService
+  useEffect(() => {
+    const unsub = onConnectionChange((ok) => {
+      setPcConnecte(ok);
+    });
+    return unsub;
   }, []);
 
   const traiterFileRef = useRef(traiterFile);
@@ -272,12 +303,13 @@ export function App() {
     traiterFileRef.current = traiterFile;
   }, [traiterFile]);
 
+  // Traitement de la file d'attente : independant de l'etat de connexion
   useEffect(() => {
     const interval = setInterval(() => {
       traiterFileRef.current();
     }, QUEUE_TRAITEMENT_MS);
     return () => clearInterval(interval);
-  }, [ipPC]);
+  }, []);
 
   useEffect(() => {
     saveQueue(file);
@@ -291,15 +323,15 @@ export function App() {
   useEffect(() => {
     const handleAppStateChange = (next: AppStateStatus) => {
       if (next === 'active') {
-        logInfo('App', 'Retour en foreground, reconnexion auto');
+        logInfo('App', 'Retour en foreground, reconnexion immediate');
+        // Test immediat sans attendre le prochain tick
         resolveBaseUrl().then((url) => {
           setIpPC(url);
-          testerConnexion().then((ok) => {
-            setPcConnecte(ok);
-            if (ok) {
-              traiterFileRef.current();
-            }
-          });
+          setPcConnecte(isConnecte());
+          // Traiter la file immediatement si connecte
+          if (isConnecte()) {
+            traiterFileRef.current();
+          }
         });
       }
     };
@@ -646,6 +678,7 @@ export function App() {
             <Text style={styles.debugLigne}>URL: {getApiBaseUrl()}</Text>
             <Text style={styles.debugLigne}>Latence: {latence !== null ? `${latence}ms` : '...'}</Text>
             <Text style={styles.debugLigne}>PC: {pcConnecte ? 'Connecte' : 'Deconnecte'}</Text>
+            {!pcConnecte && <Text style={styles.debugLigne}>Prochain check: {getBackoffMs() / 1000}s</Text>}
             <Text style={styles.debugLigne}>File: {file.length} en attente</Text>
             <Text style={styles.debugLigne}>Version: {appVersion}</Text>
           </View>
