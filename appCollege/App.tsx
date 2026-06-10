@@ -157,8 +157,8 @@ export function App() {
   const [historique, setHistorique] = useState<HistoryEntry[]>([]);
 
   const [debugMode, setDebugMode] = useState(false);
-  const [tapCount, setTapCount] = useState(0);
-  const [lastTapTime, setLastTapTime] = useState(0);
+  const tapCountRef = useRef(0);
+  const lastTapTimeRef = useRef(0);
   const [latence, setLatence] = useState<number | null>(null);
 
   const traitementEnCours = useRef(false);
@@ -173,22 +173,18 @@ export function App() {
   }, []);
 
   const handleTitreTap = useCallback(() => {
-    if (!__DEV__) return;
     const now = Date.now();
-    if (now - lastTapTime > 1000) {
-      setTapCount(1);
+    if (now - lastTapTimeRef.current > 1000) {
+      tapCountRef.current = 1;
     } else {
-      setTapCount((prev) => {
-        const newCount = prev + 1;
-        if (newCount >= 5) {
-          setDebugMode((d) => !d);
-          return 0;
-        }
-        return newCount;
-      });
+      tapCountRef.current += 1;
+      if (tapCountRef.current >= 5) {
+        setDebugMode((d) => !d);
+        tapCountRef.current = 0;
+      }
     }
-    setLastTapTime(now);
-  }, [lastTapTime]);
+    lastTapTimeRef.current = now;
+  }, []);
 
   const mettreAJourHistorique = useCallback(
     (id: string, patch: Partial<HistoryEntry>) => {
