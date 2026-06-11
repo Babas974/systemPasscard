@@ -227,6 +227,7 @@ fn main() {
         })
         .setup(move |app| {
             let app_handle = app.handle().clone();
+            let db_cleanup = db_http.clone();
             let http_state = routes::HttpState {
                 db: db_http,
                 emitter: build_emitter(app_handle.clone()),
@@ -241,7 +242,7 @@ fn main() {
                 let rt = tokio::runtime::Runtime::new().unwrap();
                 rt.block_on(async {
                     // Tache de nettoyage des logs info/debug toutes les 10 secondes
-                    let db_cleanup_clone = db_http.clone();
+                    let db_cleanup_clone = db_cleanup.clone();
                     tokio::spawn(async move {
                         loop {
                             tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
@@ -265,7 +266,7 @@ fn main() {
                             })
                             .allowed_methods(vec!["GET", "POST", "DELETE"])
                             .allowed_header(actix_web::http::header::CONTENT_TYPE);
-                        let mut app = actix_web::App::new()
+                        let app = actix_web::App::new()
                             .wrap(cors)
                             .app_data(data.clone())
                             .route("/health", actix_web::web::get().to(routes::health))
@@ -277,7 +278,7 @@ fn main() {
                             .route("/debug/logs", actix_web::web::delete().to(routes::delete_logs));
                         #[cfg(debug_assertions)]
                         {
-                            app = app.route("/seed", actix_web::web::post().to(routes::seed));
+                            return app.route("/seed", actix_web::web::post().to(routes::seed));
                         }
                         app
                     })
