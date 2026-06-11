@@ -1,7 +1,8 @@
 // App.tsx
 // App tablette college : formulaire de passage a l'infirmerie.
-// Envoie les scans en HTTP POST au PC, gere la file d'attente hors-ligne,
-// l'historique local, les parametres et le theme adaptatif.
+// UX simplifiee en 3 etapes : Nom → Prenom → Valider.
+// Le bouton rond indique l'etat de connexion (vert/rouge).
+// 6 taps sur le bouton rond = parametres.
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -9,12 +10,11 @@ import {
   TextInput,
   View,
   TouchableOpacity,
-  ScrollView,
-  Alert,
   StatusBar,
   Vibration,
   AppState,
   AppStateStatus,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from './theme';
@@ -56,6 +56,73 @@ import { version as appVersion } from './package.json';
 startLogFlusher(3000);
 installGlobalErrorHandler('App');
 
+// --- Toast simple ---
+interface ToastState {
+  visible: boolean;
+  message: string;
+  type: 'succes' | 'erreur' | 'info';
+}
+
+function Toast({
+  toast,
+  onCache,
+}: {
+  toast: ToastState;
+  onCache: () => void;
+}) {
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (toast.visible) {
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.delay(2000),
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start(() => onCache());
+    }
+  }, [toast.visible]);
+
+  if (!toast.visible) return null;
+
+  const bg =
+    toast.type === 'succes'
+      ? '#16a34a'
+      : toast.type === 'erreur'
+        ? '#dc2626'
+        : '#3b82f6';
+
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        bottom: 40,
+        left: 20,
+        right: 20,
+        backgroundColor: bg,
+        paddingVertical: 14,
+        paddingHorizontal: 20,
+        borderRadius: 10,
+        zIndex: 999,
+        opacity,
+        elevation: 8,
+      }}
+    >
+      <Text style={{ color: '#fff', fontSize: 15, fontWeight: 'bold', textAlign: 'center' }}>
+        {toast.message}
+      </Text>
+    </Animated.View>
+  );
+}
+
+// --- ErrorBoundary ---
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { erreur: Error | null }
@@ -79,49 +146,18 @@ class ErrorBoundary extends React.Component<
   render() {
     if (this.state.erreur) {
       return (
-        <View
-          style={{
-            flex: 1,
-            justifyContent: 'center',
-            alignItems: 'center',
-            backgroundColor: '#1a1a2e',
-            padding: 24,
-          }}
-        >
-          <Text
-            style={{
-              color: '#e74c3c',
-              fontSize: 20,
-              fontWeight: 'bold',
-              marginBottom: 12,
-              textAlign: 'center',
-            }}
-          >
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a2e', padding: 24 }}>
+          <Text style={{ color: '#e74c3c', fontSize: 20, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' }}>
             Oups, une erreur est survenue
           </Text>
-          <Text
-            style={{
-              color: '#ccc',
-              fontSize: 14,
-              textAlign: 'center',
-              marginBottom: 24,
-              lineHeight: 20,
-            }}
-          >
+          <Text style={{ color: '#ccc', fontSize: 14, textAlign: 'center', marginBottom: 24, lineHeight: 20 }}>
             {this.state.erreur.message || 'Erreur inconnue'}
           </Text>
           <TouchableOpacity
             onPress={() => this.setState({ erreur: null })}
-            style={{
-              backgroundColor: '#3498db',
-              paddingHorizontal: 24,
-              paddingVertical: 12,
-              borderRadius: 8,
-            }}
+            style={{ backgroundColor: '#3498db', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 }}
           >
-            <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-              Recommencer
-            </Text>
+            <Text style={{ color: '#fff', fontWeight: 'bold' }}>Recommencer</Text>
           </TouchableOpacity>
         </View>
       );
@@ -130,25 +166,16 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-type Statut = 'IDLE' | 'SUCCESS' | 'ENVOI' | 'ERROR' | 'QUEUED';
+type Etape = 1 | 2 | 3;
 type Screen = 'main' | 'settings';
 
 const QUEUE_TRAITEMENT_MS = 3000;
 
 const vibrerSucces = () => Vibration.vibrate(60);
-
 const vibrerErreur = () => {
   Vibration.vibrate(120);
   setTimeout(() => Vibration.vibrate(120), 200);
   setTimeout(() => Vibration.vibrate(120), 400);
-};
-
-const formatDate = (ts: number): string => {
-  const d = new Date(ts);
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${pad(
-    d.getDate(),
-  )}/${pad(d.getMonth() + 1)}`;
 };
 
 export function App() {
@@ -156,55 +183,57 @@ export function App() {
   const styles = createStyles(theme);
 
   const [screen, setScreen] = useState<Screen>('main');
+  const [etape, setEtape] = useState<Etape>(1);
   const [nom, setNom] = useState('');
   const [prenom, setPrenom] = useState('');
-  const [statut, setStatut] = useState<Statut>('IDLE');
-  const [statutMsg, setStatutMsg] = useState<string>('');
   const [pcConnecte, setPcConnecte] = useState(false);
   const [ipPC, setIpPC] = useState('127.0.0.1');
-
   const [file, setFile] = useState<QueueEntry[]>([]);
   const [historique, setHistorique] = useState<HistoryEntry[]>([]);
-
-  const [debugMode, setDebugMode] = useState(false);
-  const tapCountRef = useRef(0);
-  const lastTapTimeRef = useRef(0);
+  const [toast, setToast] = useState<ToastState>({ visible: false, message: '', type: 'info' });
   const [latence, setLatence] = useState<number | null>(null);
 
   const traitementEnCours = useRef(false);
   const validationEnCours = useRef(false);
-  const envoiEnCours = statut === 'ENVOI';
+  const tapCountRef = useRef(0);
+  const lastTapTimeRef = useRef(0);
 
-  const ajouterHistorique = useCallback((entree: HistoryEntry) => {
-    setHistorique((prev) => {
-      const next = [entree, ...prev];
-      return next.slice(0, 50);
-    });
+  // --- Toast ---
+  const afficherToast = useCallback((message: string, type: ToastState['type'] = 'info') => {
+    setToast({ visible: true, message, type });
+  }, []);
+  const cacherToast = useCallback(() => {
+    setToast((prev) => ({ ...prev, visible: false }));
   }, []);
 
-  const handleTitreTap = useCallback(() => {
+  // --- 6 taps sur bouton rond → parametres ---
+  const handleBoutonRondTap = useCallback(() => {
     const now = Date.now();
     if (now - lastTapTimeRef.current > 1000) {
       tapCountRef.current = 1;
     } else {
       tapCountRef.current += 1;
-      if (tapCountRef.current >= 5) {
-        setDebugMode((d) => !d);
+      if (tapCountRef.current >= 6) {
+        setScreen('settings');
         tapCountRef.current = 0;
       }
     }
     lastTapTimeRef.current = now;
   }, []);
 
+  // --- Historique ---
+  const ajouterHistorique = useCallback((entree: HistoryEntry) => {
+    setHistorique((prev) => [entree, ...prev].slice(0, 50));
+  }, []);
+
   const mettreAJourHistorique = useCallback(
     (id: string, patch: Partial<HistoryEntry>) => {
-      setHistorique((prev) =>
-        prev.map((e) => (e.id === id ? { ...e, ...patch } : e)),
-      );
+      setHistorique((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
     },
     [],
   );
 
+  // --- File d'attente ---
   const traiterFile = useCallback(async () => {
     if (traitementEnCours.current) return;
     if (file.length === 0) return;
@@ -217,44 +246,30 @@ export function App() {
       const res = await envoyerScan(entree.contenu);
       if (res.statut === 'ok') {
         setFile((prev) => prev.slice(1));
-        mettreAJourHistorique(entree.id, {
-          statut: 'envoye',
-          envoyeLe: Date.now(),
-          erreur: undefined,
-        });
+        mettreAJourHistorique(entree.id, { statut: 'envoye', envoyeLe: Date.now(), erreur: undefined });
         vibrerSucces();
       } else {
-        mettreAJourHistorique(entree.id, {
-          statut: 'erreur',
-          erreur: res.message,
-        });
+        mettreAJourHistorique(entree.id, { statut: 'erreur', erreur: res.message });
       }
     } finally {
       traitementEnCours.current = false;
     }
   }, [file, mettreAJourHistorique]);
 
+  // --- Init ---
   useEffect(() => {
     const init = async () => {
       try {
         logInfo('App', `Demarrage v${appVersion}`);
-
         await initDeviceIP();
-
         const savedIP = await loadIP();
-        if (savedIP && savedIP !== '127.0.0.1') {
-          setIP(savedIP);
-        }
-
+        if (savedIP && savedIP !== '127.0.0.1') setIP(savedIP);
         const activeUrl = await resolveBaseUrl();
         setIpPC(activeUrl);
-
         const q = await loadQueue();
         setFile(q);
-
         const h = await loadHistory();
         setHistorique(h);
-
         logInfo('App', `Init OK (url=${activeUrl}, file=${q.length}, hist=${h.length})`);
       } catch (e) {
         logFatal('App', 'Echec init au demarrage', e);
@@ -263,7 +278,7 @@ export function App() {
     init();
   }, []);
 
-  // Surveillance de la connexion avec backoff exponentiel
+  // --- Connexion avec backoff ---
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     let actif = true;
@@ -275,12 +290,8 @@ export function App() {
       setIpPC(activeUrl);
       setPcConnecte(isConnecte());
       setLatence(Date.now() - start);
-
-      // Programmer le prochain check selon le backoff
       const delay = getBackoffMs() || 3000;
-      if (actif) {
-        timer = setTimeout(check, delay);
-      }
+      if (actif) timer = setTimeout(check, delay);
     };
 
     check();
@@ -290,11 +301,8 @@ export function App() {
     };
   }, []);
 
-  // Ecouter les changements de connexion depuis ApiService
   useEffect(() => {
-    const unsub = onConnectionChange((ok) => {
-      setPcConnecte(ok);
-    });
+    const unsub = onConnectionChange((ok) => setPcConnecte(ok));
     return unsub;
   }, []);
 
@@ -303,35 +311,23 @@ export function App() {
     traiterFileRef.current = traiterFile;
   }, [traiterFile]);
 
-  // Traitement de la file d'attente : independant de l'etat de connexion
   useEffect(() => {
-    const interval = setInterval(() => {
-      traiterFileRef.current();
-    }, QUEUE_TRAITEMENT_MS);
+    const interval = setInterval(() => traiterFileRef.current(), QUEUE_TRAITEMENT_MS);
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    saveQueue(file);
-  }, [file]);
+  useEffect(() => { saveQueue(file); }, [file]);
+  useEffect(() => { saveHistory(historique); }, [historique]);
 
-  useEffect(() => {
-    saveHistory(historique);
-  }, [historique]);
-
-  // Reconnexion auto quand l'app revient en foreground (apres veille)
+  // --- Reconnexion foreground ---
   useEffect(() => {
     const handleAppStateChange = (next: AppStateStatus) => {
       if (next === 'active') {
         logInfo('App', 'Retour en foreground, reconnexion immediate');
-        // Test immediat sans attendre le prochain tick
         resolveBaseUrl().then((url) => {
           setIpPC(url);
           setPcConnecte(isConnecte());
-          // Traiter la file immediatement si connecte
-          if (isConnecte()) {
-            traiterFileRef.current();
-          }
+          if (isConnecte()) traiterFileRef.current();
         });
       }
     };
@@ -339,43 +335,24 @@ export function App() {
     return () => sub.remove();
   }, []);
 
-  const construireEtEnvoyer = async (contenu: string, historyId: string) => {
-    const resultat = await envoyerScan(contenu);
-    if (resultat.statut === 'ok') {
-      mettreAJourHistorique(historyId, {
-        statut: 'envoye',
-        envoyeLe: Date.now(),
-        erreur: undefined,
-      });
-      vibrerSucces();
-      return true;
+  // --- Validation en 3 etapes ---
+  const handleNomChange = (text: string) => {
+    setNom(text);
+    if (text.trim().length > 0 && etape === 1) {
+      setEtape(2);
     }
-    mettreAJourHistorique(historyId, {
-      statut: 'erreur',
-      erreur: resultat.message,
-    });
-    vibrerErreur();
-    return false;
   };
 
-  const mettreEnFile = (contenu: string): HistoryEntry => {
-    const entree: QueueEntry = {
-      id: generateId(),
-      contenu,
-      creeLe: Date.now(),
-    };
-    const histEntry: HistoryEntry = { ...entree, statut: 'en_attente' };
-    setFile((prev) => [...prev, entree]);
-    ajouterHistorique(histEntry);
-    return histEntry;
+  const handlePrenomChange = (text: string) => {
+    setPrenom(text);
+    if (text.trim().length > 0 && etape === 2) {
+      setEtape(3);
+    }
   };
 
   const handleValider = async () => {
     if (validationEnCours.current) return;
-    if (!nom.trim() || !prenom.trim()) {
-      Alert.alert('Erreur', 'Merci de remplir ton nom et ton prenom.');
-      return;
-    }
+    if (!nom.trim() || !prenom.trim()) return;
 
     validationEnCours.current = true;
     try {
@@ -383,94 +360,46 @@ export function App() {
       const prenomPropre = prenom.trim();
       const texteAEnvoyer = `${nomMaj} ${prenomPropre}`;
 
-      setStatut('ENVOI');
-      setStatutMsg('');
-
       if (!pcConnecte) {
-        const entree = mettreEnFile(texteAEnvoyer);
-        setNom('');
-        setPrenom('');
-        setStatut('QUEUED');
-        setStatutMsg(
-          `PC injoignable. Scan mis en file d'attente (${entree.contenu}).`,
-        );
+        const entree: QueueEntry = { id: generateId(), contenu: texteAEnvoyer, creeLe: Date.now() };
+        const histEntry: HistoryEntry = { ...entree, statut: 'en_attente' };
+        setFile((prev) => [...prev, entree]);
+        ajouterHistorique(histEntry);
         vibrerErreur();
-        setTimeout(() => setStatut('IDLE'), 4000);
+        afficherToast(`PC injoignable. Mis en file (${entree.contenu})`, 'erreur');
+        reset();
         return;
       }
 
       const tempId = generateId();
-      const histTemp: HistoryEntry = {
-        id: tempId,
-        contenu: texteAEnvoyer,
-        creeLe: Date.now(),
-        statut: 'en_attente',
-      };
+      const histTemp: HistoryEntry = { id: tempId, contenu: texteAEnvoyer, creeLe: Date.now(), statut: 'en_attente' };
       ajouterHistorique(histTemp);
 
-      const ok = await construireEtEnvoyer(texteAEnvoyer, tempId);
-      if (ok) {
-        setNom('');
-        setPrenom('');
-        setStatut('SUCCESS');
-        setStatutMsg('Ton passage a bien ete enregistre. Merci !');
-        setTimeout(() => setStatut('IDLE'), 3000);
+      const resultat = await envoyerScan(texteAEnvoyer);
+      if (resultat.statut === 'ok') {
+        mettreAJourHistorique(tempId, { statut: 'envoye', envoyeLe: Date.now(), erreur: undefined });
+        vibrerSucces();
+        afficherToast('Passage enregistre ! Merci.', 'succes');
       } else {
-        const entree: QueueEntry = {
-          id: tempId,
-          contenu: texteAEnvoyer,
-          creeLe: Date.now(),
-        };
+        mettreAJourHistorique(tempId, { statut: 'erreur', erreur: resultat.message });
+        const entree: QueueEntry = { id: tempId, contenu: texteAEnvoyer, creeLe: Date.now() };
         setFile((prev) => [...prev, entree]);
-        setStatut('QUEUED');
-        setStatutMsg(
-          'Envoi echoue. Scan mis en file d\'attente pour re-essai automatique.',
-        );
-        setTimeout(() => setStatut('IDLE'), 4000);
+        vibrerErreur();
+        afficherToast('Envoi echoue. Mis en file d\'attente.', 'erreur');
       }
+      reset();
     } finally {
       validationEnCours.current = false;
     }
   };
 
-  const handleRenvoyerHistorique = async (entree: HistoryEntry) => {
-    if (entree.statut === 'envoye') {
-      Alert.alert('Info', 'Ce scan a deja ete envoye.');
-      return;
-    }
-    const ok = await construireEtEnvoyer(entree.contenu, entree.id);
-    if (ok) {
-      setFile((prev) => prev.filter((q) => q.id !== entree.id));
-    }
+  const reset = () => {
+    setNom('');
+    setPrenom('');
+    setEtape(1);
   };
 
-  const handleViderHistorique = async () => {
-    setHistorique([]);
-    await clearHistoryStorage();
-  };
-
-  const handleTesterConnexionSettings = async () => {
-    return testerConnexion();
-  };
-
-  const handleViderTout = async () => {
-    Alert.alert(
-      'Vider la file d\'attente ?',
-      'Tous les scans en attente seront supprimes.',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Vider',
-          style: 'destructive',
-          onPress: async () => {
-            setFile([]);
-            await clearQueueStorage();
-          },
-        },
-      ],
-    );
-  };
-
+  // --- Rendu parametres ---
   if (screen === 'settings') {
     return (
       <SettingsScreen
@@ -479,211 +408,94 @@ export function App() {
         ipActuelle={ipPC}
         pcConnecte={pcConnecte}
         onClose={() => setScreen('main')}
-        onViderHistorique={handleViderHistorique}
-        onTesterConnexion={handleTesterConnexionSettings}
+        onViderHistorique={async () => { setHistorique([]); await clearHistoryStorage(); }}
+        onTesterConnexion={testerConnexion}
+        historique={historique}
       />
     );
   }
 
+  // --- Rendu principal ---
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle={theme.statusBar} backgroundColor={theme.background} />
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.carteFormulaire}>
-          <View style={styles.headerRow}>
-            <TouchableOpacity
-              style={{ flex: 1 }}
-              onPress={handleTitreTap}
-              activeOpacity={1}
-            >
-              <Text style={styles.titrePrincipal}>
-                Passage a l'infirmerie
-              </Text>
-            </TouchableOpacity>
-            {file.length > 0 && (
-              <TouchableOpacity
-                style={styles.badge}
-                onPress={handleViderTout}
-                accessibilityLabel={`${file.length} scans en attente`}
-              >
-                <Text style={styles.badgeTexte}>
-                  {file.length} en attente
-                </Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={styles.headerGear}
-              onPress={() => setScreen('settings')}
-              accessibilityLabel="Ouvrir les parametres"
-            >
-              <Text style={styles.headerGearTexte}>{'\u2699'}</Text>
-            </TouchableOpacity>
-          </View>
 
-          <View style={[
-            styles.barreConnexion,
-            { backgroundColor: pcConnecte ? theme.successBg : theme.errorBg },
-          ]}>
-            <View style={[
-              styles.dotConnexion,
-              { backgroundColor: pcConnecte ? theme.successBorder : theme.errorBorder },
-            ]} />
-            <Text style={[
-              styles.texteConnexion,
-              { color: pcConnecte ? theme.successText : theme.errorText },
-            ]}>
-              {pcConnecte ? 'Connecte' : 'Hors ligne'}
-            </Text>
-          </View>
+      {/* Header : titre + bouton rond */}
+      <View style={styles.headerRow}>
+        <Text style={styles.titrePrincipal}>Passage a l'infirmerie</Text>
+        <TouchableOpacity
+          style={[
+            styles.boutonRond,
+            { backgroundColor: pcConnecte ? '#16a34a' : '#dc2626' },
+          ]}
+          onPress={handleBoutonRondTap}
+          activeOpacity={0.7}
+        />
+      </View>
 
-          <Text style={styles.label}>Ton nom de famille</Text>
+      {/* Etape indicator */}
+      <Text style={styles.etapeLabel}>
+        ── Etape {etape} sur 3 ──────────
+      </Text>
+
+      {/* Etape 1 : Nom */}
+      {etape >= 1 && (
+        <>
+          <Text style={styles.label}>
+            {etape === 1 ? 'Tape ton nom de famille' : ''}
+          </Text>
           <TextInput
-            style={styles.input}
-            placeholder="Ex : DUPONT"
+            style={[
+              styles.input,
+              etape > 1 && styles.inputGris,
+            ]}
+            placeholder="NOM DE FAMILLE"
             placeholderTextColor={theme.placeholder}
             value={nom}
-            onChangeText={setNom}
+            onChangeText={handleNomChange}
             autoCapitalize="characters"
+            editable={etape === 1}
           />
+        </>
+      )}
 
-          <Text style={styles.label}>Ton prenom</Text>
+      {/* Etape 2 : Prenom */}
+      {etape >= 2 && (
+        <>
+          <Text style={styles.label}>
+            {etape === 2 ? 'Tape ton prenom' : ''}
+          </Text>
           <TextInput
-            style={styles.input}
-            placeholder="Ex : Lea"
+            style={[
+              styles.input,
+              etape > 2 && styles.inputGris,
+            ]}
+            placeholder="PRENOM"
             placeholderTextColor={theme.placeholder}
             value={prenom}
-            onChangeText={setPrenom}
+            onChangeText={handlePrenomChange}
             autoCapitalize="words"
+            editable={etape === 2}
           />
+        </>
+      )}
 
+      {/* Etape 3 : Valider */}
+      {etape === 3 && (
+        <>
+          <Text style={styles.label}>Appuie sur valider</Text>
           <TouchableOpacity
-            style={[
-              styles.boutonValider,
-              envoiEnCours && styles.boutonDesactive,
-            ]}
+            style={styles.boutonValider}
             onPress={handleValider}
             activeOpacity={0.8}
-            disabled={envoiEnCours}
           >
-            <Text style={styles.texteBouton}>
-              {envoiEnCours ? 'Envoi en cours...' : 'Valider mon passage'}
-            </Text>
+            <Text style={styles.texteBouton}>VALIDER</Text>
           </TouchableOpacity>
-
-          {statut === 'SUCCESS' && (
-            <View style={styles.messageSucces}>
-              <Text style={styles.texteSucces}>
-                {statutMsg ||
-                  'Ton passage a bien ete enregistre. Merci !'}
-              </Text>
-            </View>
-          )}
-
-          {statut === 'QUEUED' && (
-            <View
-              style={[
-                styles.messageErreur,
-                { backgroundColor: theme.badge, borderColor: theme.badge },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.texteErreur,
-                  { color: theme.badgeText },
-                ]}
-              >
-                {statutMsg}
-              </Text>
-            </View>
-          )}
-
-          {statut === 'ERROR' && (
-            <View style={styles.messageErreur}>
-              <Text style={styles.texteErreur}>
-                {statutMsg ||
-                  'Erreur d\'envoi. Verifie la connexion Wi-Fi.'}
-              </Text>
-            </View>
-          )}
-
-          <View style={styles.historiqueSection}>
-            <Text style={styles.historiqueTitre}>
-              Mes derniers passages ({historique.length}/50)
-            </Text>
-            {historique.length === 0 ? (
-              <Text style={styles.historiqueVide}>
-                Aucun scan enregistre localement.
-              </Text>
-            ) : (
-              historique.map((entree) => {
-                const peutRenvoyer = entree.statut !== 'envoye';
-                return (
-                  <View key={entree.id} style={styles.historiqueItem}>
-                    <View style={styles.historiqueContenu}>
-                      <Text style={styles.historiqueTexte}>
-                        {entree.contenu}
-                      </Text>
-                      <Text style={styles.historiqueMeta}>
-                        {formatDate(entree.creeLe)}
-                        {entree.envoyeLe
-                          ? ` -> envoye a ${formatDate(entree.envoyeLe)}`
-                          : ''}
-                      </Text>
-                    </View>
-                    <Text
-                      style={[
-                        styles.historiqueStatut,
-                        entree.statut === 'envoye' &&
-                          styles.historiqueStatutEnvoye,
-                        entree.statut === 'en_attente' &&
-                          styles.historiqueStatutAttente,
-                        entree.statut === 'erreur' &&
-                          styles.historiqueStatutErreur,
-                      ]}
-                    >
-                      {entree.statut === 'envoye'
-                        ? 'OK'
-                        : entree.statut === 'en_attente'
-                          ? 'Attente'
-                          : 'Erreur'}
-                    </Text>
-                    {peutRenvoyer && (
-                      <TouchableOpacity
-                        style={styles.historiqueBouton}
-                        onPress={() => handleRenvoyerHistorique(entree)}
-                      >
-                        <Text style={styles.historiqueBoutonTexte}>
-                          Renvoyer
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                );
-              })
-            )}
-          </View>
-        </View>
-      </ScrollView>
-
-      {debugMode && (
-        <View style={styles.debugPanel}>
-          <View style={styles.debugHeader}>
-            <Text style={styles.debugTitre}>DEBUG MODE</Text>
-            <TouchableOpacity onPress={() => setDebugMode(false)}>
-              <Text style={styles.debugFermer}>X</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.debugContenu}>
-            <Text style={styles.debugLigne}>IP: {getIP()}</Text>
-            <Text style={styles.debugLigne}>URL: {getApiBaseUrl()}</Text>
-            <Text style={styles.debugLigne}>Latence: {latence !== null ? `${latence}ms` : '...'}</Text>
-            <Text style={styles.debugLigne}>PC: {pcConnecte ? 'Connecte' : 'Deconnecte'}</Text>
-            {!pcConnecte && <Text style={styles.debugLigne}>Prochain check: {getBackoffMs() / 1000}s</Text>}
-            <Text style={styles.debugLigne}>File: {file.length} en attente</Text>
-            <Text style={styles.debugLigne}>Version: {appVersion}</Text>
-          </View>
-        </View>
+        </>
       )}
+
+      {/* Toast */}
+      <Toast toast={toast} onCache={cacherToast} />
     </SafeAreaView>
   );
 }

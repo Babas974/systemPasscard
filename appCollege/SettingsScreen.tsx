@@ -1,8 +1,7 @@
 // SettingsScreen.tsx
-// Page de parametres : statut connexion, vidage historique, test, version.
-// L'IP du PC n'est plus modifiable depuis l'UI (cf. const DEFAULT_IP dans ApiService.ts).
+// Page de parametres : debug console, test connexion, vider historique, liste eleves.
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Text,
   View,
@@ -14,7 +13,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from './theme';
 import { createStyles } from './styles';
-import { DEFAULT_IP } from './StorageService';
+import { getApiBaseUrl } from './ApiService';
+import { HistoryEntry } from './StorageService';
 
 interface Props {
   theme: Theme;
@@ -24,7 +24,24 @@ interface Props {
   onClose: () => void;
   onViderHistorique: () => Promise<void>;
   onTesterConnexion: () => Promise<boolean>;
+  historique?: HistoryEntry[];
 }
+
+interface LogEntry {
+  id: number;
+  source: string;
+  niveau: string;
+  message: string;
+  date_heure: string;
+}
+
+const COULEURS_NIVEAU: Record<string, string> = {
+  debug: '#7c8da0',
+  info: '#4a9eff',
+  warn: '#f5a623',
+  error: '#ff5e57',
+  fatal: '#ff2d55',
+};
 
 export default function SettingsScreen({
   theme,
@@ -34,17 +51,43 @@ export default function SettingsScreen({
   onClose,
   onViderHistorique,
   onTesterConnexion,
+  historique = [],
 }: Props) {
   const styles = createStyles(theme);
   const [testEnCours, setTestEnCours] = useState(false);
   const [testResultat, setTestResultat] = useState<string | null>(null);
+  const [consoleOuverte, setConsoleOuverte] = useState(false);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [nbErreurs, setNbErreurs] = useState(0);
+
+  // Charger les logs
+  const chargerLogs = useCallback(async () => {
+    try {
+      const baseUrl = getApiBaseUrl();
+      const res = await fetch(`${baseUrl}/debug/logs?limit=100`);
+      if (res.ok) {
+        const data = await res.json();
+        const entries = (data.logs || []) as LogEntry[];
+        setLogs(entries);
+        setNbErreurs(entries.filter((l) => l.niveau === 'error' || l.niveau === 'fatal').length);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (consoleOuverte) {
+      chargerLogs();
+      const interval = setInterval(chargerLogs, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [consoleOuverte, chargerLogs]);
 
   const handleTester = async () => {
     setTestEnCours(true);
     setTestResultat(null);
     const ok = await onTesterConnexion();
     setTestEnCours(false);
-    setTestResultat(ok ? 'Connexion reussie' : 'PC injoignable');
+    setTestResultat(ok ? 'Connexion reussie !' : 'PC injoignable');
   };
 
   const handleViderHistorique = () => {
@@ -66,144 +109,127 @@ export default function SettingsScreen({
     );
   };
 
+  const viderLogs = async () => {
+    try {
+      const baseUrl = getApiBaseUrl();
+      await fetch(`${baseUrl}/debug/logs`, { method: 'DELETE' });
+      setLogs([]);
+      setNbErreurs(0);
+    } catch {}
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={[styles.scrollContainer, { paddingTop: 24 }]}>
-        <ScrollView
-          contentContainerStyle={{ alignItems: 'stretch', width: '100%' }}
-        >
-          <View style={styles.carteFormulaire}>
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 8,
-              }}
-            >
-              <Text style={styles.titrePrincipal}>Parametres</Text>
-              <TouchableOpacity onPress={onClose} style={{ padding: 8 }}>
-                <Text
-                  style={{ color: theme.primary, fontSize: 16, fontWeight: 'bold' }}
-                >
-                  Fermer
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.label}>Connexion au PC</Text>
-            <View
-              style={[
-                styles.boutonChangerPC,
-                {
-                  backgroundColor: pcConnecte
-                    ? theme.successBg
-                    : theme.inputBackground,
-                  borderColor: pcConnecte ? theme.successBorder : theme.border,
-                  borderWidth: 1,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.texteBoutonPC,
-                  {
-                    color: pcConnecte ? theme.successText : theme.textSecondary,
-                  },
-                ]}
-              >
-                {pcConnecte
-                  ? `Connecte (${ipActuelle})`
-                  : `Injoignable (${ipActuelle})`}
-              </Text>
-            </View>
-            <Text
-              style={{
-                fontSize: 12,
-                color: theme.textSecondary,
-                marginTop: 4,
-                textAlign: 'center',
-              }}
-            >
-              IP par defaut : {DEFAULT_IP}
-            </Text>
-
-            <View
-              style={{
-                height: 1,
-                backgroundColor: theme.border,
-                marginVertical: 24,
-              }}
-            />
-
-            <Text style={styles.label}>Tester la connexion</Text>
-            <TouchableOpacity
-              style={[styles.boutonValider, { backgroundColor: theme.warning }]}
-              onPress={handleTester}
-              activeOpacity={0.8}
-              disabled={testEnCours}
-            >
-              {testEnCours ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.texteBouton}>Lancer le test</Text>
-              )}
-            </TouchableOpacity>
-            {testResultat && (
-              <Text
-                style={{
-                  marginTop: 12,
-                  textAlign: 'center',
-                  fontSize: 15,
-                  fontWeight: 'bold',
-                  color: testResultat.startsWith('Connexion')
-                    ? theme.successText
-                    : theme.errorText,
-                }}
-              >
-                {testResultat}
-              </Text>
-            )}
-
-            <View
-              style={{
-                height: 1,
-                backgroundColor: theme.border,
-                marginVertical: 24,
-              }}
-            />
-
-            <Text style={styles.label}>Historique local</Text>
-            <TouchableOpacity
-              style={[styles.boutonValider, { backgroundColor: theme.errorBorder }]}
-              onPress={handleViderHistorique}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.texteBouton}>Vider l'historique</Text>
-            </TouchableOpacity>
-
-            <View
-              style={{
-                height: 1,
-                backgroundColor: theme.border,
-                marginVertical: 24,
-              }}
-            />
-
-            <Text style={styles.label}>Version</Text>
-            <Text
-              style={{
-                color: theme.textSecondary,
-                fontSize: 16,
-                textAlign: 'center',
-                marginBottom: 4,
-              }}
-            >
-              {version}
-            </Text>
-          </View>
-        </ScrollView>
+      {/* Header */}
+      <View style={styles.settingsHeader}>
+        <Text style={styles.settingsTitre}>Parametres</Text>
+        <TouchableOpacity onPress={onClose} style={styles.settingsBoutonFermer}>
+          <Text style={styles.settingsTexteFermer}>X</Text>
+        </TouchableOpacity>
       </View>
+
+      <ScrollView contentContainerStyle={styles.settingsScroll}>
+        {/* Debug console */}
+        <TouchableOpacity
+          style={styles.settingsBouton}
+          onPress={() => setConsoleOuverte(!consoleOuverte)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.settingsBoutonTexte}>debug console</Text>
+          {nbErreurs > 0 && (
+            <View style={styles.settingsBadge}>
+              <Text style={styles.settingsBadgeTexte}>{nbErreurs}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Console overlay */}
+        {consoleOuverte && (
+          <View style={styles.consoleOverlay}>
+            <View style={styles.consoleHeader}>
+              <Text style={styles.consoleTitre}>Logs ({logs.length})</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity onPress={viderLogs}>
+                  <Text style={styles.consoleEffacer}>Vider</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setConsoleOuverte(false)}>
+                  <Text style={styles.consoleFermer}>X</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            <ScrollView style={styles.consoleScroll}>
+              {logs.length === 0 ? (
+                <Text style={styles.consoleVide}>Aucun log.</Text>
+              ) : (
+                logs.map((l) => (
+                  <View key={l.id} style={styles.consoleLigne}>
+                    <Text style={[styles.consoleBadge, { backgroundColor: COULEURS_NIVEAU[l.niveau] || '#888' }]}>
+                      {l.niveau.toUpperCase()}
+                    </Text>
+                    <Text style={styles.consoleSource}>[{l.source}]</Text>
+                    <Text style={styles.consoleMessage} numberOfLines={2}>
+                      {l.message}
+                    </Text>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Tester la connexion */}
+        <TouchableOpacity
+          style={styles.settingsBouton}
+          onPress={handleTester}
+          activeOpacity={0.7}
+          disabled={testEnCours}
+        >
+          {testEnCours ? (
+            <ActivityIndicator color={theme.text} />
+          ) : (
+            <Text style={styles.settingsBoutonTexte}>Tester la connexion</Text>
+          )}
+        </TouchableOpacity>
+        {testResultat && (
+          <Text style={[
+            styles.settingsResultat,
+            { color: testResultat.includes('reussie') ? theme.successText : theme.errorText },
+          ]}>
+            {testResultat}
+          </Text>
+        )}
+
+        {/* Vider l'historique */}
+        <TouchableOpacity
+          style={styles.settingsBouton}
+          onPress={handleViderHistorique}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.settingsBoutonTexte}>Vider l'historique</Text>
+        </TouchableOpacity>
+
+        {/* Historique des eleves */}
+        <View style={styles.settingsHistorique}>
+          <Text style={styles.settingsHistoriqueTitre}>Historique</Text>
+          <ScrollView style={styles.settingsHistoriqueScroll}>
+            {historique.length === 0 ? (
+              <Text style={styles.settingsHistoriqueVide}>Aucun passage enregistre.</Text>
+            ) : (
+              historique.map((e) => (
+                <View key={e.id} style={styles.settingsHistoriqueItem}>
+                  <Text style={styles.settingsHistoriqueNom}>{e.contenu}</Text>
+                  <Text style={styles.settingsHistoriqueHeure}>
+                    {new Date(e.creeLe).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
+
+        {/* Version */}
+        <Text style={styles.settingsVersion}>v{version}</Text>
+      </ScrollView>
     </SafeAreaView>
   );
 }

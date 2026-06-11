@@ -259,7 +259,7 @@ export const envoyerScan = async (contenu: string): Promise<ScanResult> => {
 
   logError('ApiService', `Envoi echoue (1ere tentative): ${first.message}`);
   // Retry immediat apres 500ms
-  await new Promise((r) => setTimeout(r, 500));
+  await new Promise<void>((r) => setTimeout(r, 500));
   const second = await sendOnce();
   if (second.statut !== 'ok') {
     logError('ApiService', `Envoi echoue (2eme tentative): ${second.message}`);
