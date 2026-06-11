@@ -133,10 +133,10 @@ export default function ConfigPanel({ ouvert, surFermer }: Props) {
       setPort(p);
       setNouveauPort(String(p));
       
-      // Tester si le serveur repond via la commande Tauri
+      // Health check via fetch (non-bloquant)
       try {
-        const ok = await invoke<boolean>("tester_sante_serveur");
-        setStatutServeur(ok ? "actif" : "inactif");
+        const res = await fetch(`http://localhost:${p}/health`, { signal: AbortSignal.timeout(3000) });
+        setStatutServeur(res.ok ? "actif" : "inactif");
       } catch {
         setStatutServeur("inactif");
       }

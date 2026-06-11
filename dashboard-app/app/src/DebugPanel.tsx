@@ -4,6 +4,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 
 export interface LogEntry {
   id: number;
@@ -29,10 +30,10 @@ const COULEURS_NIVEAU: Record<string, string> = {
   fatal: "#ff2d55",
 };
 
-const fetchLogs = async (limit: number = 200): Promise<{ logs: LogEntry[]; total: number; ok: boolean }> => {
+const fetchLogs = async (port: number = 8389, limit: number = 200): Promise<{ logs: LogEntry[]; total: number; ok: boolean }> => {
   try {
-    const url = `http://localhost:8389/debug/logs?limit=${limit}`;
-    const res = await fetch(url);
+    const url = `http://localhost:${port}/debug/logs?limit=${limit}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
     if (!res.ok) return { logs: [], total: 0, ok: false };
     const data = await res.json();
     return { logs: (data.logs || []) as LogEntry[], total: data.total || 0, ok: true };
@@ -41,10 +42,11 @@ const fetchLogs = async (limit: number = 200): Promise<{ logs: LogEntry[]; total
   }
 };
 
-const deleteAllLogs = async (): Promise<number> => {
+const deleteAllLogs = async (port: number = 8389): Promise<number> => {
   try {
-    const res = await fetch("http://localhost:8389/debug/logs", {
+    const res = await fetch(`http://localhost:${port}/debug/logs`, {
       method: "DELETE",
+      signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) return 0;
     const data = await res.json();
@@ -172,13 +174,20 @@ export default function DebugPanel({ ouvert, surFermer }: Props) {
   const unlistenRef = useRef<UnlistenFn | null>(null);
 
   const [totalLogs, setTotalLogs] = useState(0);
+  const [port, setPort] = useState(8389);
 
   const recharger = useCallback(async () => {
-    const result = await fetchLogs(200);
+    const result = await fetchLogs(port, 200);
     setLogs(result.logs);
     setTotalLogs(result.total);
     setStatut(result.ok ? "connecte" : "deconnecte");
-  }, []);
+  }, [port]);
+
+  // Charger le port au montage
+  useEffect(() => {
+    if (!ouvert) return;
+    invoke<number>("obtenir_port_serveur").then(setPort).catch(() => {});
+  }, [ouvert]);
 
   useEffect(() => {
     if (!ouvert) return;
@@ -225,8 +234,9 @@ export default function DebugPanel({ ouvert, surFermer }: Props) {
   }, [logs, autoScroll]);
 
   const vider = async () => {
-    await deleteAllLogs();
+    await deleteAllLogs(port);
     setLogs([]);
+    setTotalLogs(0);
   };
 
   const logsFiltres = logs.filter((l) => {

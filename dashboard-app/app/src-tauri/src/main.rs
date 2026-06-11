@@ -155,16 +155,6 @@ fn relancer_serveur(state: State<'_, AppState>) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
-fn tester_sante_serveur(state: State<'_, AppState>) -> Result<bool, String> {
-    let port = state.config_port.lock().map_err(|e| e.to_string())?;
-    let url = format!("http://localhost:{}/health", *port);
-    match reqwest::blocking::get(&url) {
-        Ok(res) => Ok(res.status().is_success()),
-        Err(_) => Ok(false),
-    }
-}
-
 // -------------------------------------------------------------------------
 // Main
 // -------------------------------------------------------------------------
@@ -315,8 +305,7 @@ fn main() {
             forcer_focus,
             obtenir_port_serveur,
             changer_port_serveur,
-            relancer_serveur,
-            tester_sante_serveur
+            relancer_serveur
         ])
         .run(tauri::generate_context!())
         .expect("Erreur lors de l'execution du moteur d'application Tauri");

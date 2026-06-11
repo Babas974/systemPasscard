@@ -169,7 +169,7 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-type Etape = 1 | 2 | 3;
+type Etape = 1 | 2;
 type Screen = 'main' | 'settings';
 
 const QUEUE_TRAITEMENT_MS = 3000;
@@ -358,8 +358,7 @@ export function App() {
     };
   }, []);
 
-  // --- Validation en 3 etapes ---
-  // Pas d'auto-advance : l'utilisateur tape librement, avance avec "Suivant"
+  // --- Validation en 2 etapes : Nom → Prenom/Valider ---
   const handleNomChange = (text: string) => {
     setNom(text);
   };
@@ -371,16 +370,12 @@ export function App() {
   const handleSuivant = () => {
     if (etape === 1 && nom.trim().length > 0) {
       setEtape(2);
-    } else if (etape === 2 && prenom.trim().length > 0) {
-      setEtape(3);
     }
   };
 
   const handleRetour = () => {
     if (etape === 2) {
       setEtape(1);
-    } else if (etape === 3) {
-      setEtape(2);
     }
   };
 
@@ -473,7 +468,7 @@ export function App() {
 
       {/* Etape indicator */}
       <Text style={styles.etapeLabel}>
-        ── Etape {etape} sur 3 ──────────
+        ── Etape {etape} sur 2 ──────────
       </Text>
 
       {/* Etape 1 : Nom */}
@@ -504,11 +499,11 @@ export function App() {
         </>
       )}
 
-      {/* Etape 2 : Prenom */}
+      {/* Etape 2 : Prenom + Valider */}
       {etape >= 2 && (
         <>
           <Text style={styles.label}>
-            {etape === 2 ? 'Tape ton prenom' : prenom.trim() ? `Prenom : ${prenom.trim()}` : ''}
+            {etape === 2 ? 'Tape ton prenom' : ''}
           </Text>
           <TextInput
             style={styles.input}
@@ -520,38 +515,22 @@ export function App() {
             editable={etape === 2}
             autoFocus={etape === 2}
           />
-          {etape === 2 && prenom.trim().length > 0 && (
-            <TouchableOpacity
-              style={styles.boutonSuivant}
-              onPress={handleSuivant}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.texteBouton}>Suivant</Text>
-            </TouchableOpacity>
-          )}
-          {etape >= 2 && (
-            <TouchableOpacity
-              style={styles.boutonRetour}
-              onPress={handleRetour}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.texteBoutonRetour}>Retour</Text>
-            </TouchableOpacity>
-          )}
-        </>
-      )}
-
-      {/* Etape 3 : Valider */}
-      {etape === 3 && (
-        <>
-          <Text style={styles.label}>Appuie sur valider</Text>
           <TouchableOpacity
-            style={styles.boutonValider}
-            onPress={handleValider}
-            activeOpacity={0.8}
+            style={styles.boutonRetour}
+            onPress={handleRetour}
+            activeOpacity={0.7}
           >
-            <Text style={styles.texteBouton}>VALIDER</Text>
+            <Text style={styles.texteBoutonRetour}>Retour</Text>
           </TouchableOpacity>
+          {prenom.trim().length > 0 && (
+            <TouchableOpacity
+              style={styles.boutonValider}
+              onPress={handleValider}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.texteBouton}>VALIDER</Text>
+            </TouchableOpacity>
+          )}
         </>
       )}
 
