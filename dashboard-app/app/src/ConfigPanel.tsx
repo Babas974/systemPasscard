@@ -133,9 +133,9 @@ export default function ConfigPanel({ ouvert, surFermer }: Props) {
       setPort(p);
       setNouveauPort(String(p));
       
-      // Health check via fetch (non-bloquant)
+      // Health check via /debug/logs (plus fiable que /health)
       try {
-        const res = await fetch(`http://localhost:${p}/health`, { signal: AbortSignal.timeout(3000) });
+        const res = await fetch(`http://localhost:${p}/debug/logs?limit=1`, { signal: AbortSignal.timeout(3000) });
         setStatutServeur(res.ok ? "actif" : "inactif");
       } catch {
         setStatutServeur("inactif");

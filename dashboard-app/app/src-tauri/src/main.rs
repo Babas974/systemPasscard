@@ -217,7 +217,6 @@ fn main() {
         })
         .setup(move |app| {
             let app_handle = app.handle().clone();
-            let db_cleanup = db_http.clone();
             let http_state = routes::HttpState {
                 db: db_http,
                 emitter: build_emitter(app_handle.clone()),
@@ -231,17 +230,6 @@ fn main() {
             std::thread::spawn(move || {
                 let rt = tokio::runtime::Runtime::new().unwrap();
                 rt.block_on(async {
-                    // Tache de nettoyage des logs info/debug toutes les 10 secondes
-                    let db_cleanup_clone = db_cleanup.clone();
-                    tokio::spawn(async move {
-                        loop {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-                            if let Ok(conn) = db_cleanup_clone.lock() {
-                                let _ = db::supprimer_logs_info_debug_anciens(&conn, 10);
-                            }
-                        }
-                    });
-
                     let data = actix_web::web::Data::new(http_state);
                     let port = *config_port_clone.lock().unwrap();
                     let srv = actix_web::HttpServer::new(move || {
