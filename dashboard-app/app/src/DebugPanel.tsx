@@ -29,15 +29,15 @@ const COULEURS_NIVEAU: Record<string, string> = {
   fatal: "#ff2d55",
 };
 
-const fetchLogs = async (limit: number = 200): Promise<{ logs: LogEntry[]; total: number }> => {
+const fetchLogs = async (limit: number = 200): Promise<{ logs: LogEntry[]; total: number; ok: boolean }> => {
   try {
     const url = `http://localhost:8389/debug/logs?limit=${limit}`;
     const res = await fetch(url);
-    if (!res.ok) return { logs: [], total: 0 };
+    if (!res.ok) return { logs: [], total: 0, ok: false };
     const data = await res.json();
-    return { logs: (data.logs || []) as LogEntry[], total: data.total || 0 };
+    return { logs: (data.logs || []) as LogEntry[], total: data.total || 0, ok: true };
   } catch {
-    return { logs: [], total: 0 };
+    return { logs: [], total: 0, ok: false };
   }
 };
 
@@ -177,7 +177,7 @@ export default function DebugPanel({ ouvert, surFermer }: Props) {
     const result = await fetchLogs(200);
     setLogs(result.logs);
     setTotalLogs(result.total);
-    setStatut(result.logs.length > 0 || result.total > 0 ? "connecte" : "deconnecte");
+    setStatut(result.ok ? "connecte" : "deconnecte");
   }, []);
 
   useEffect(() => {

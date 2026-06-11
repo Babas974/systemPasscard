@@ -8,6 +8,7 @@ import {
 } from "@tauri-apps/plugin-notification";
 import { save } from "@tauri-apps/plugin-dialog";
 import DebugPanel from "./DebugPanel";
+import ConfigPanel from "./ConfigPanel";
 
 interface Scan {
   id: number;
@@ -375,6 +376,7 @@ export default function App() {
   const [nbAffectes, setNbAffectes] = useState<number | null>(null);
   const [stats, setStats] = useState<Statistiques | null>(null);
   const [debugOuvert, setDebugOuvert] = useState(false);
+  const [configOuvert, setConfigOuvert] = useState(false);
   const [logs, setLogs] = useState("");
   const [theme, setTheme] = useState<Theme>(() => {
     const stocke = localStorage.getItem(CLE_THEME);
@@ -798,9 +800,19 @@ export default function App() {
               {debugOuvert ? "▼" : "▲"}
             </span>
           </div>
+          <div style={styles.debugBarre} onClick={() => setConfigOuvert(!configOuvert)}>
+            <span style={styles.debugLabel}>config</span>
+            <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--texte-secondaire)" }}>
+              {configOuvert ? "▼" : "▲"}
+            </span>
+          </div>
           <DebugPanel
             ouvert={debugOuvert}
             surFermer={() => setDebugOuvert(false)}
+          />
+          <ConfigPanel
+            ouvert={configOuvert}
+            surFermer={() => setConfigOuvert(false)}
           />
         </>
       )}

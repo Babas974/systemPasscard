@@ -392,6 +392,14 @@ pub fn supprimer_logs_anciens(conn: &Connection, garder: i64) -> rusqlite::Resul
     Ok(n)
 }
 
+pub fn supprimer_logs_info_debug_anciens(conn: &Connection, secondes: i64) -> rusqlite::Result<usize> {
+    let n = conn.execute(
+        "DELETE FROM logs WHERE niveau IN ('info', 'debug') AND date_heure < datetime('now', '-' || ?1 || ' seconds')",
+        params![secondes],
+    )?;
+    Ok(n)
+}
+
 // Callback emis apres chaque insertion. Le binaire Tauri y branche
 // l'emission d'events Tauri, le serveur headless utilise un no-op.
 pub type ScanEmitter = Arc<dyn Fn(i64, &str, &str) + Send + Sync>;

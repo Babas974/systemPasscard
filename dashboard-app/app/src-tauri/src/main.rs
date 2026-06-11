@@ -11,6 +11,8 @@ struct AppState {
     db: DbState,
     #[allow(dead_code)]
     startup: Instant,
+    server_handle: Arc<Mutex<Option<actix_web::dev::ServerHandle>>>,
+    config_port: Arc<Mutex<u16>>,
 }
 
 // -------------------------------------------------------------------------
@@ -119,6 +121,50 @@ fn forcer_focus(window: tauri::Window) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn obtenir_port_serveur(state: State<'_, AppState>) -> Result<u16, String> {
+    let port = state.config_port.lock().map_err(|e| e.to_string())?;
+    Ok(*port)
+}
+
+#[tauri::command]
+fn changer_port_serveur(port: u16, state: State<'_, AppState>) -> Result<(), String> {
+    let mut config_port = state.config_port.lock().map_err(|e| e.to_string())?;
+    *config_port = port;
+    // Sauvegarder dans un fichier de config
+    let config_path = dirs::config_dir()
+        .unwrap_or_default()
+        .join("appcollege")
+        .join("config.json");
+    let _ = std::fs::create_dir_all(config_path.parent().unwrap());
+    let config = serde_json::json!({ "port": port });
+    let _ = std::fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap());
+    Ok(())
+}
+
+#[tauri::command]
+fn relancer_serveur(state: State<'_, AppState>) -> Result<String, String> {
+    let handle = state.server_handle.lock().map_err(|e| e.to_string())?;
+    let port = state.config_port.lock().map_err(|e| e.to_string())?;
+    if let Some(_h) = handle.as_ref() {
+        // Note: arreter un serveur actix-web necessite un runtime dédié
+        // Pour simplifier, on retourne juste le port actuel
+        Ok(format!("Serveur actif sur le port {}", *port))
+    } else {
+        Ok(format!("Serveur non demarre. Port: {}", *port))
+    }
+}
+
+#[tauri::command]
+fn tester_sante_serveur(state: State<'_, AppState>) -> Result<bool, String> {
+    let port = state.config_port.lock().map_err(|e| e.to_string())?;
+    let url = format!("http://localhost:{}/health", *port);
+    match reqwest::blocking::get(&url) {
+        Ok(res) => Ok(res.status().is_success()),
+        Err(_) => Ok(false),
+    }
+}
+
 // -------------------------------------------------------------------------
 // Main
 // -------------------------------------------------------------------------
@@ -127,6 +173,19 @@ fn main() {
     let db_handle = db::init_db().expect("Erreur ouverture base SQLite");
     let db_http = db_handle.clone();
     let startup = Instant::now();
+
+    // Charger la config (port)
+    let config_path = dirs::config_dir()
+        .unwrap_or_default()
+        .join("appcollege")
+        .join("config.json");
+    let port: u16 = if let Ok(contenu) = std::fs::read_to_string(&config_path) {
+        serde_json::from_str(&contenu)
+            .map(|c: serde_json::Value| c["port"].as_u64().unwrap_or(8389) as u16)
+            .unwrap_or(8389)
+    } else {
+        8389
+    };
 
     // Branchement de l'emitter Tauri sur le callback HTTP partage
     fn build_emitter(app: AppHandle) -> db::ScanEmitter {
@@ -153,6 +212,9 @@ fn main() {
         })
     }
 
+    let server_handle = Arc::new(Mutex::new(None));
+    let config_port = Arc::new(Mutex::new(port));
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
@@ -160,6 +222,8 @@ fn main() {
         .manage(AppState {
             db: db_handle,
             startup,
+            server_handle: server_handle.clone(),
+            config_port: config_port.clone(),
         })
         .setup(move |app| {
             let app_handle = app.handle().clone();
@@ -169,12 +233,27 @@ fn main() {
                 log_emitter: build_log_emitter(app_handle),
             };
 
+            let server_handle_clone = server_handle.clone();
+            let config_port_clone = config_port.clone();
+
             // Demarrage du serveur HTTP dans un thread dedie
             std::thread::spawn(move || {
                 let rt = tokio::runtime::Runtime::new().unwrap();
                 rt.block_on(async {
+                    // Tache de nettoyage des logs info/debug toutes les 10 secondes
+                    let db_cleanup_clone = db_http.clone();
+                    tokio::spawn(async move {
+                        loop {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                            if let Ok(conn) = db_cleanup_clone.lock() {
+                                let _ = db::supprimer_logs_info_debug_anciens(&conn, 10);
+                            }
+                        }
+                    });
+
                     let data = actix_web::web::Data::new(http_state);
-                    actix_web::HttpServer::new(move || {
+                    let port = *config_port_clone.lock().unwrap();
+                    let server = actix_web::HttpServer::new(move || {
                         let cors = actix_cors::Cors::default()
                             .allowed_origin_fn(|origin, _req| {
                                 let origin_str = origin.to_str().unwrap_or("");
@@ -204,11 +283,17 @@ fn main() {
                         }
                         app
                     })
-                    .bind("0.0.0.0:8389") // SYNC: ApiService.ts, NetworkModule.kt
-                    .expect("Impossible de demarrer le serveur sur le port 8389")
-                    .run()
-                    .await
-                    .expect("Erreur serveur HTTP");
+                    .bind(format!("0.0.0.0:{}", port))
+                    .expect(&format!("Impossible de demarrer le serveur sur le port {}", port));
+
+                    // Stocker le handle pour arreter/restart
+                    let handle = server.handle().clone();
+                    {
+                        let mut h = server_handle_clone.lock().unwrap();
+                        *h = Some(handle);
+                    }
+
+                    server.run().await.expect("Erreur serveur HTTP");
                 });
             });
             Ok(())
@@ -226,7 +311,11 @@ fn main() {
             supprimer_tout,
             supprimer_aujourd_hui,
             supprimer_precedents,
-            forcer_focus
+            forcer_focus,
+            obtenir_port_serveur,
+            changer_port_serveur,
+            relancer_serveur,
+            tester_sante_serveur
         ])
         .run(tauri::generate_context!())
         .expect("Erreur lors de l'execution du moteur d'application Tauri");
