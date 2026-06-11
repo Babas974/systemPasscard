@@ -2,7 +2,7 @@
 // Service de logs avec stockage local + envoi HTTP au PC.
 // - Stockage local : les logs survivent à la déconnexion
 // - Envoi HTTP : flush periodique vers POST /debug/log
-- - FATAL/ERROR : flush immediat
+// - FATAL/ERROR : flush immediat
 // - Buffer local accessible pour la console debug
 
 import { getApiBaseUrl, isConnecte } from './ApiService';
