@@ -253,11 +253,10 @@ fn main() {
 
                     let data = actix_web::web::Data::new(http_state);
                     let port = *config_port_clone.lock().unwrap();
-                    let server = actix_web::HttpServer::new(move || {
+                    let srv = actix_web::HttpServer::new(move || {
                         let cors = actix_cors::Cors::default()
                             .allowed_origin_fn(|origin, _req| {
                                 let origin_str = origin.to_str().unwrap_or("");
-                                // Autoriser uniquement le reseau local
                                 origin_str.starts_with("http://127.0.0.1")
                                     || origin_str.starts_with("http://localhost")
                                     || origin_str.starts_with("http://192.168.")
@@ -276,24 +275,25 @@ fn main() {
                             .route("/debug/log", actix_web::web::post().to(routes::post_log))
                             .route("/debug/logs", actix_web::web::get().to(routes::get_logs))
                             .route("/debug/logs", actix_web::web::delete().to(routes::delete_logs));
-                        // Route /seed uniquement en debug
                         #[cfg(debug_assertions)]
                         {
                             app = app.route("/seed", actix_web::web::post().to(routes::seed));
                         }
                         app
                     })
+                    .disable_signals()
                     .bind(format!("0.0.0.0:{}", port))
-                    .expect(&format!("Impossible de demarrer le serveur sur le port {}", port));
+                    .expect(&format!("Impossible de demarrer le serveur sur le port {}", port))
+                    .run();
 
                     // Stocker le handle pour arreter/restart
-                    let handle = server.handle().clone();
+                    let handle = srv.handle().clone();
                     {
                         let mut h = server_handle_clone.lock().unwrap();
                         *h = Some(handle);
                     }
 
-                    server.run().await.expect("Erreur serveur HTTP");
+                    srv.await.expect("Erreur serveur HTTP");
                 });
             });
             Ok(())
