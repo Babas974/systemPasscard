@@ -15,6 +15,8 @@ import {
   AppState,
   AppStateStatus,
   Animated,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from './theme';
@@ -30,6 +32,7 @@ import {
   isConnecte,
   getBackoffMs,
   onConnectionChange,
+  resetBackoff,
 } from './ApiService';
 import {
   loadIP,
@@ -319,34 +322,65 @@ export function App() {
   useEffect(() => { saveQueue(file); }, [file]);
   useEffect(() => { saveHistory(historique); }, [historique]);
 
-  // --- Reconnexion foreground ---
+  // --- Reconnexion foreground (apres veille) ---
   useEffect(() => {
+    let timerReconnexion: ReturnType<typeof setTimeout> | null = null;
+
     const handleAppStateChange = (next: AppStateStatus) => {
       if (next === 'active') {
-        logInfo('App', 'Retour en foreground, reconnexion immediate');
-        resolveBaseUrl().then((url) => {
+        logInfo('App', 'Retour en foreground — reset backoff + reconnexion');
+        // Reset immediat du backoff
+        resetBackoff();
+        setPcConnecte(false);
+
+        // Delai 2s pour laisser le WiFi se stabiliser apres veille
+        if (timerReconnexion) clearTimeout(timerReconnexion);
+        timerReconnexion = setTimeout(async () => {
+          // Forcer un scan reseau complet
+          const url = await resolveBaseUrl();
           setIpPC(url);
-          setPcConnecte(isConnecte());
-          if (isConnecte()) traiterFileRef.current();
-        });
+          const ok = isConnecte();
+          setPcConnecte(ok);
+          logInfo('App', `Reconnexion post-veille: ${ok ? 'OK' : 'ECHEC'}`);
+
+          // Traiter la file meme si pas encore connecte (pour les envois recents)
+          if (ok) {
+            traiterFileRef.current();
+          }
+        }, 2000);
       }
     };
+
     const sub = AppState.addEventListener('change', handleAppStateChange);
-    return () => sub.remove();
+    return () => {
+      sub.remove();
+      if (timerReconnexion) clearTimeout(timerReconnexion);
+    };
   }, []);
 
   // --- Validation en 3 etapes ---
+  // Pas d'auto-advance : l'utilisateur tape librement, avance avec "Suivant"
   const handleNomChange = (text: string) => {
     setNom(text);
-    if (text.trim().length > 0 && etape === 1) {
-      setEtape(2);
-    }
   };
 
   const handlePrenomChange = (text: string) => {
     setPrenom(text);
-    if (text.trim().length > 0 && etape === 2) {
+  };
+
+  const handleSuivant = () => {
+    if (etape === 1 && nom.trim().length > 0) {
+      setEtape(2);
+    } else if (etape === 2 && prenom.trim().length > 0) {
       setEtape(3);
+    }
+  };
+
+  const handleRetour = () => {
+    if (etape === 2) {
+      setEtape(1);
+    } else if (etape === 3) {
+      setEtape(2);
     }
   };
 
@@ -417,6 +451,10 @@ export function App() {
 
   // --- Rendu principal ---
   return (
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle={theme.statusBar} backgroundColor={theme.background} />
 
@@ -442,20 +480,27 @@ export function App() {
       {etape >= 1 && (
         <>
           <Text style={styles.label}>
-            {etape === 1 ? 'Tape ton nom de famille' : ''}
+            {etape === 1 ? 'Tape ton nom de famille' : nom.trim() ? `Nom : ${nom.trim()}` : ''}
           </Text>
           <TextInput
-            style={[
-              styles.input,
-              etape > 1 && styles.inputGris,
-            ]}
+            style={styles.input}
             placeholder="NOM DE FAMILLE"
             placeholderTextColor={theme.placeholder}
             value={nom}
             onChangeText={handleNomChange}
             autoCapitalize="characters"
             editable={etape === 1}
+            autoFocus={etape === 1}
           />
+          {etape === 1 && nom.trim().length > 0 && (
+            <TouchableOpacity
+              style={styles.boutonSuivant}
+              onPress={handleSuivant}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.texteBouton}>Suivant</Text>
+            </TouchableOpacity>
+          )}
         </>
       )}
 
@@ -463,20 +508,36 @@ export function App() {
       {etape >= 2 && (
         <>
           <Text style={styles.label}>
-            {etape === 2 ? 'Tape ton prenom' : ''}
+            {etape === 2 ? 'Tape ton prenom' : prenom.trim() ? `Prenom : ${prenom.trim()}` : ''}
           </Text>
           <TextInput
-            style={[
-              styles.input,
-              etape > 2 && styles.inputGris,
-            ]}
+            style={styles.input}
             placeholder="PRENOM"
             placeholderTextColor={theme.placeholder}
             value={prenom}
             onChangeText={handlePrenomChange}
             autoCapitalize="words"
             editable={etape === 2}
+            autoFocus={etape === 2}
           />
+          {etape === 2 && prenom.trim().length > 0 && (
+            <TouchableOpacity
+              style={styles.boutonSuivant}
+              onPress={handleSuivant}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.texteBouton}>Suivant</Text>
+            </TouchableOpacity>
+          )}
+          {etape >= 2 && (
+            <TouchableOpacity
+              style={styles.boutonRetour}
+              onPress={handleRetour}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.texteBoutonRetour}>Retour</Text>
+            </TouchableOpacity>
+          )}
         </>
       )}
 
@@ -497,6 +558,7 @@ export function App() {
       {/* Toast */}
       <Toast toast={toast} onCache={cacherToast} />
     </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 

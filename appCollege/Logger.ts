@@ -1,27 +1,53 @@
 // Logger.ts
-// Service de logs HTTP temps-reel : envoie chaque log/erreur au serveur PC
-// via POST /debug/log.
-// - FATAL/ERROR : flush immediat (fetch synchrone) pour ne pas perdre
-//   les messages lors d'un crash rapide.
-// - INFO/WARN/DEBUG : file d'attente + flush periodique.
-// - Lock anti-double-envoi entre le flush periodique et le flush immediat.
+// Service de logs avec stockage local + envoi HTTP au PC.
+// - Stockage local : les logs survivent à la déconnexion
+// - Envoi HTTP : flush periodique vers POST /debug/log
+- - FATAL/ERROR : flush immediat
+// - Buffer local accessible pour la console debug
 
-import { getApiBaseUrl } from './ApiService';
+import { getApiBaseUrl, isConnecte } from './ApiService';
 
 export type NiveauLog = 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 
-interface QueueItem {
+interface LogEntry {
   source: string;
   niveau: NiveauLog;
   message: string;
+  timestamp: number;
+  envoye: boolean;
 }
 
-const fileQueue: QueueItem[] = [];
+// Buffer local des logs (max 500)
+const logsLocaux: LogEntry[] = [];
+const MAX_LOGS_LOCAUX = 500;
+
+// Queue d'envoi au PC
+const fileQueue: LogEntry[] = [];
 const MAX_QUEUE = 200;
 
 let flushInterval: ReturnType<typeof setInterval> | null = null;
 let flushEnCours = false;
-let flushImmediatEnCours = false;
+
+// --- Stockage local ---
+
+function ajouterLogLocal(entry: LogEntry): void {
+  logsLocaux.unshift(entry);
+  if (logsLocaux.length > MAX_LOGS_LOCAUX) {
+    logsLocaux.pop();
+  }
+}
+
+export function getLogsLocaux(limit: number = 100): LogEntry[] {
+  return logsLocaux.slice(0, limit);
+}
+
+export function getNbErreursLocales(): number {
+  return logsLocaux.filter(
+    (l) => l.niveau === 'error' || l.niveau === 'fatal',
+  ).length;
+}
+
+// --- Envoi HTTP ---
 
 async function envoyerLog(
   source: string,
@@ -48,42 +74,27 @@ async function envoyerLog(
   }
 }
 
-async function envoyerLot(items: QueueItem[]): Promise<QueueItem[]> {
-  const nonEnvoyes: QueueItem[] = [];
-  for (const item of items) {
-    const ok = await envoyerLog(item.source, item.niveau, item.message);
-    if (!ok) nonEnvoyes.push(item);
-  }
-  return nonEnvoyes;
-}
-
 async function flushPeriodique(): Promise<void> {
   if (flushEnCours) return;
   if (fileQueue.length === 0) return;
+  if (!isConnecte()) return; // Pas de réseau, on attend
+
   flushEnCours = true;
   try {
-    const items = fileQueue.splice(0, fileQueue.length);
-    const nonEnvoyes = await envoyerLot(items);
-    if (nonEnvoyes.length > 0) {
-      fileQueue.unshift(...nonEnvoyes);
+    const restants: LogEntry[] = [];
+    for (const item of fileQueue) {
+      const ok = await envoyerLog(item.source, item.niveau, item.message);
+      if (ok) {
+        item.envoye = true;
+      } else {
+        restants.push(item);
+      }
     }
+    // Remplacer la queue par les non-envoyes
+    fileQueue.length = 0;
+    fileQueue.push(...restants);
   } finally {
     flushEnCours = false;
-  }
-}
-
-async function flushImmediat(item: QueueItem): Promise<void> {
-  // N'envoie que cet item, sans toucher a la queue (evite conflits avec periodique)
-  if (flushImmediatEnCours) {
-    // Si deja en cours, on remet dans la queue pour le prochain flush
-    fileQueue.push(item);
-    return;
-  }
-  flushImmediatEnCours = true;
-  try {
-    await envoyerLog(item.source, item.niveau, item.message);
-  } finally {
-    flushImmediatEnCours = false;
   }
 }
 
@@ -106,8 +117,10 @@ export async function log(
   niveau: NiveauLog,
   message: string,
 ): Promise<void> {
+  const timestamp = Date.now();
   const ligne = `[${niveau.toUpperCase()}] [${source}] ${message}`;
 
+  // Toujours log dans la console natif
   switch (niveau) {
     case 'debug':
       console.debug(ligne);
@@ -124,17 +137,27 @@ export async function log(
       break;
   }
 
-  // FATAL/ERROR : flush immediat (ne pas perdre en cas de crash rapide)
+  // Stocker localement (toujours)
+  const entry: LogEntry = { source, niveau, message, timestamp, envoye: false };
+  ajouterLogLocal(entry);
+
+  // FATAL/ERROR : flush immediat vers le PC
   if (niveau === 'fatal' || niveau === 'error') {
-    flushImmediat({ source, niveau, message }).catch(() => {});
+    if (isConnecte()) {
+      envoyerLog(source, niveau, message).then((ok) => {
+        if (ok) entry.envoye = true;
+      });
+    } else {
+      fileQueue.push(entry);
+    }
     return;
   }
 
-  // DEBUG/INFO/WARN : file d'attente + flush periodique
+  // DEBUG/INFO/WARN : file d'attente
   if (fileQueue.length >= MAX_QUEUE) {
     fileQueue.shift();
   }
-  fileQueue.push({ source, niveau, message });
+  fileQueue.push(entry);
 }
 
 export async function logInfo(source: string, message: string): Promise<void> {

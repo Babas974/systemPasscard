@@ -15,6 +15,7 @@ import { Theme } from './theme';
 import { createStyles } from './styles';
 import { getApiBaseUrl } from './ApiService';
 import { HistoryEntry } from './StorageService';
+import { getLogsLocaux, getNbErreursLocales } from './Logger';
 
 interface Props {
   theme: Theme;
@@ -60,24 +61,24 @@ export default function SettingsScreen({
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [nbErreurs, setNbErreurs] = useState(0);
 
-  // Charger les logs
-  const chargerLogs = useCallback(async () => {
-    try {
-      const baseUrl = getApiBaseUrl();
-      const res = await fetch(`${baseUrl}/debug/logs?limit=100`);
-      if (res.ok) {
-        const data = await res.json();
-        const entries = (data.logs || []) as LogEntry[];
-        setLogs(entries);
-        setNbErreurs(entries.filter((l) => l.niveau === 'error' || l.niveau === 'fatal').length);
-      }
-    } catch {}
+  // Charger les logs depuis le buffer local (plus besoin du PC)
+  const chargerLogs = useCallback(() => {
+    const locaux = getLogsLocaux(100);
+    const entries: LogEntry[] = locaux.map((l, i) => ({
+      id: i,
+      source: l.source,
+      niveau: l.niveau,
+      message: l.message,
+      date_heure: new Date(l.timestamp).toISOString(),
+    }));
+    setLogs(entries);
+    setNbErreurs(getNbErreursLocales());
   }, []);
 
   useEffect(() => {
     if (consoleOuverte) {
       chargerLogs();
-      const interval = setInterval(chargerLogs, 3000);
+      const interval = setInterval(chargerLogs, 2000);
       return () => clearInterval(interval);
     }
   }, [consoleOuverte, chargerLogs]);
@@ -110,12 +111,8 @@ export default function SettingsScreen({
   };
 
   const viderLogs = async () => {
-    try {
-      const baseUrl = getApiBaseUrl();
-      await fetch(`${baseUrl}/debug/logs`, { method: 'DELETE' });
-      setLogs([]);
-      setNbErreurs(0);
-    } catch {}
+    setLogs([]);
+    setNbErreurs(0);
   };
 
   return (
@@ -159,7 +156,7 @@ export default function SettingsScreen({
             </View>
             <ScrollView style={styles.consoleScroll}>
               {logs.length === 0 ? (
-                <Text style={styles.consoleVide}>Aucun log.</Text>
+                <Text style={styles.consoleVide}>Aucun log. Ouvrez la console apres des actions.</Text>
               ) : (
                 logs.map((l) => (
                   <View key={l.id} style={styles.consoleLigne}>

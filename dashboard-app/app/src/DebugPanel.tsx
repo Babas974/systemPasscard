@@ -29,15 +29,15 @@ const COULEURS_NIVEAU: Record<string, string> = {
   fatal: "#ff2d55",
 };
 
-const fetchLogs = async (limit: number = 200): Promise<LogEntry[]> => {
+const fetchLogs = async (limit: number = 200): Promise<{ logs: LogEntry[]; total: number }> => {
   try {
     const url = `http://localhost:8389/debug/logs?limit=${limit}`;
     const res = await fetch(url);
-    if (!res.ok) return [];
+    if (!res.ok) return { logs: [], total: 0 };
     const data = await res.json();
-    return (data.logs || []) as LogEntry[];
+    return { logs: (data.logs || []) as LogEntry[], total: data.total || 0 };
   } catch {
-    return [];
+    return { logs: [], total: 0 };
   }
 };
 
@@ -171,10 +171,13 @@ export default function DebugPanel({ ouvert, surFermer }: Props) {
   const zoneRef = useRef<HTMLDivElement>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
 
+  const [totalLogs, setTotalLogs] = useState(0);
+
   const recharger = useCallback(async () => {
-    const data = await fetchLogs(200);
-    setLogs(data);
-    setStatut("connecte");
+    const result = await fetchLogs(200);
+    setLogs(result.logs);
+    setTotalLogs(result.total);
+    setStatut(result.logs.length > 0 || result.total > 0 ? "connecte" : "deconnecte");
   }, []);
 
   useEffect(() => {
@@ -300,7 +303,17 @@ export default function DebugPanel({ ouvert, surFermer }: Props) {
       <div ref={zoneRef} style={styles.zoneLogs}>
         {logsFiltres.length === 0 ? (
           <div style={styles.etatVide}>
-            Aucun log. Les logs de l'app Android apparaitront ici en temps-reel.
+            {statut === "deconnecte" 
+              ? "Serveur injoignable. Verifiez que le serveur tourne sur le port 8389."
+              : "Aucun log. Les logs de l'app Android apparaitront ici en temps-reel."}
+            {statut === "deconnecte" && (
+              <button 
+                style={{ ...styles.btnIcone, marginTop: "12px", padding: "8px 16px" }}
+                onClick={recharger}
+              >
+                Reessayer
+              </button>
+            )}
           </div>
         ) : (
           logsFiltres.map((l) => {
@@ -334,10 +347,10 @@ export default function DebugPanel({ ouvert, surFermer }: Props) {
       <div style={styles.statutBar}>
         <span>
           Statut: <strong style={{ color: statut === "connecte" ? "var(--succes)" : "var(--danger)" }}>
-            {statut}
+            {statut === "connecte" ? "Connecte" : "Serveur injoignable"}
           </strong>
         </span>
-        <span>Logs: {logsFiltres.length} / {logs.length}</span>
+        <span>Affiches: {logsFiltres.length} / {logs.length} | Total serveur: {totalLogs}</span>
       </div>
     </div>
   );

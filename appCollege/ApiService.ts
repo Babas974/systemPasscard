@@ -61,6 +61,12 @@ export const getBackoffMs = (): number => {
   return delays[Math.min(tentativeEchecs, delays.length - 1)];
 };
 
+// Reset du backoff (utilise apres une longue veille)
+export const resetBackoff = (): void => {
+  tentativeEchecs = 0;
+  connecte = false;
+};
+
 export interface ScanResult {
   statut: 'ok' | 'erreur';
   message: string;
