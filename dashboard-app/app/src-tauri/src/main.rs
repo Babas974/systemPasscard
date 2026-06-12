@@ -13,6 +13,34 @@ struct AppState {
     startup: Instant,
     server_handle: Arc<Mutex<Option<actix_web::dev::ServerHandle>>>,
     config_port: Arc<Mutex<u16>>,
+    api_key: Arc<Mutex<String>>,
+}
+
+// Generer ou charger la cle API
+fn get_or_create_api_key() -> String {
+    let config_path = dirs::config_dir()
+        .unwrap_or_default()
+        .join("appcollege")
+        .join("api_key");
+    
+    if config_path.exists() {
+        std::fs::read_to_string(&config_path)
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    } else {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let seed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let key = format!("{:064x}", seed);
+        
+        let _ = std::fs::create_dir_all(config_path.parent().unwrap());
+        let _ = std::fs::write(&config_path, &key);
+        
+        key
+    }
 }
 
 // -------------------------------------------------------------------------
@@ -128,6 +156,12 @@ fn obtenir_port_serveur(state: State<'_, AppState>) -> Result<u16, String> {
 }
 
 #[tauri::command]
+fn obtenir_cle_api(state: State<'_, AppState>) -> Result<String, String> {
+    let key = state.api_key.lock().map_err(|e| e.to_string())?;
+    Ok(key.clone())
+}
+
+#[tauri::command]
 fn changer_port_serveur(port: u16, state: State<'_, AppState>) -> Result<(), String> {
     let mut config_port = state.config_port.lock().map_err(|e| e.to_string())?;
     *config_port = port;
@@ -204,6 +238,7 @@ fn main() {
 
     let server_handle = Arc::new(Mutex::new(None));
     let config_port = Arc::new(Mutex::new(port));
+    let api_key = Arc::new(Mutex::new(get_or_create_api_key()));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -214,13 +249,16 @@ fn main() {
             startup,
             server_handle: server_handle.clone(),
             config_port: config_port.clone(),
+            api_key: api_key.clone(),
         })
         .setup(move |app| {
             let app_handle = app.handle().clone();
+            let api_key_val = api_key.lock().unwrap().clone();
             let http_state = routes::HttpState {
                 db: db_http,
                 emitter: build_emitter(app_handle.clone()),
                 log_emitter: build_log_emitter(app_handle),
+                api_key: api_key_val,
             };
 
             let server_handle_clone = server_handle.clone();
@@ -255,9 +293,7 @@ fn main() {
                             .route("/debug/logs", actix_web::web::get().to(routes::get_logs))
                             .route("/debug/logs", actix_web::web::delete().to(routes::delete_logs));
                         #[cfg(debug_assertions)]
-                        {
-                            return app.route("/seed", actix_web::web::post().to(routes::seed));
-                        }
+                        let app = app.route("/seed", actix_web::web::post().to(routes::seed));
                         app
                     })
                     .disable_signals()
@@ -292,6 +328,7 @@ fn main() {
             supprimer_precedents,
             forcer_focus,
             obtenir_port_serveur,
+            obtenir_cle_api,
             changer_port_serveur,
             relancer_serveur
         ])

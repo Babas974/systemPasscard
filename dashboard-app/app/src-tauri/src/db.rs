@@ -1,10 +1,41 @@
 // db.rs
 // Logique de base de donnees SQLite (utilisee par main.rs et bin/server.rs)
+// Base de donnees chiffree via SQLCipher.
 
 use chrono::Local;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+
+// Cle de chiffrement pour SQLCipher
+// Generee au premier demarrage et stockee dans le repertoire de config
+fn get_or_create_passphrase() -> String {
+    let config_path = dirs::config_dir()
+        .unwrap_or_default()
+        .join("appcollege")
+        .join("db_key");
+    
+    if config_path.exists() {
+        std::fs::read_to_string(&config_path)
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    } else {
+        // Generer une cle aleatoire de 32 caracteres
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let seed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let key = format!("{:032x}", seed);
+        
+        // Creer le repertoire si necessaire
+        let _ = std::fs::create_dir_all(config_path.parent().unwrap());
+        let _ = std::fs::write(&config_path, &key);
+        
+        key
+    }
+}
 
 fn echapper_like(pattern: &str) -> String {
     let mut out = String::with_capacity(pattern.len());
@@ -28,7 +59,10 @@ pub struct Scan {
 }
 
 pub fn init_db() -> Result<Arc<Mutex<Connection>>, rusqlite::Error> {
+    let passphrase = get_or_create_passphrase();
     let conn = Connection::open("scans.db")?;
+    // Appliquer la cle de chiffrement immediatement
+    conn.execute_batch(&format!("PRAGMA key='{}';", passphrase))?;
     conn.execute_batch(
         "PRAGMA journal_mode=WAL;
          CREATE TABLE IF NOT EXISTS scans (
@@ -51,7 +85,10 @@ pub fn init_db() -> Result<Arc<Mutex<Connection>>, rusqlite::Error> {
 }
 
 pub fn init_db_at(path: &str) -> Result<Connection, rusqlite::Error> {
+    let passphrase = get_or_create_passphrase();
     let conn = Connection::open(path)?;
+    // Appliquer la cle de chiffrement immediatement
+    conn.execute_batch(&format!("PRAGMA key='{}';", passphrase))?;
     conn.execute_batch(
         "PRAGMA journal_mode=WAL;
          CREATE TABLE IF NOT EXISTS scans (

@@ -9,6 +9,7 @@ import { logWarn, logError } from './Logger';
 
 const KEYS = {
   IP: '@appCollege/ip',
+  PORT: '@appCollege/port',
   QUEUE: '@appCollege/queue',
   HISTORY: '@appCollege/history',
 };
@@ -209,4 +210,40 @@ export const generateId = (): string => {
 
 export const isStoragePersistant = (): boolean => {
   return !storageBroken && getAsyncStorage() !== null;
+};
+
+export const loadPort = async (): Promise<number | null> => {
+  const AS = getAsyncStorage();
+  if (!AS) {
+    warnOnce();
+    return null;
+  }
+  try {
+    const v = await AS.getItem(KEYS.PORT);
+    if (v && v.trim().length > 0) {
+      const port = Number(v);
+      if (!isNaN(port) && port > 0) {
+        return port;
+      }
+    }
+    return null;
+  } catch (e) {
+    storageBroken = true;
+    logError('Storage', 'loadPort a echoue, fallback memoire', e).catch(() => {});
+    return null;
+  }
+};
+
+export const savePort = async (port: number): Promise<void> => {
+  const AS = getAsyncStorage();
+  if (!AS) {
+    warnOnce();
+    return;
+  }
+  try {
+    await AS.setItem(KEYS.PORT, String(port));
+  } catch (e) {
+    storageBroken = true;
+    logError('Storage', 'savePort a echoue, fallback memoire', e).catch(() => {});
+  }
 };

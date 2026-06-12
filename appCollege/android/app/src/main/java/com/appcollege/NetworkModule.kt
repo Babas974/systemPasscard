@@ -15,12 +15,14 @@ import java.util.concurrent.Executors
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicInteger
 
 @ReactModule(name = NetworkModule.NAME)
 class NetworkModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
     companion object {
         const val NAME = "NetworkModule"
-        private const val PORT = 8389 // SYNC: ApiService.ts, main.rs
+        private const val PORT_MIN = 8389 // SYNC: ApiService.ts, main.rs
+        private const val PORT_MAX = 8399 // SYNC: ApiService.ts, main.rs
         private const val TIMEOUT_MS = 500
         private const val PING_TIMEOUT_MS = 200
     }
@@ -42,16 +44,30 @@ class NetworkModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
         try {
             val socket = Socket()
             try {
-                socket.connect(java.net.InetSocketAddress(ip, PORT), PING_TIMEOUT_MS)
+                socket.connect(java.net.InetSocketAddress(ip, PORT_MIN), PING_TIMEOUT_MS)
                 socket.close()
-                promise.resolve(true)
+                promise.resolve(PORT_MIN)
             } catch (_: Exception) {
-                promise.resolve(false)
+                // Essayer les ports suivants
+                var found = false
+                for (port in (PORT_MIN + 1)..PORT_MAX) {
+                    try {
+                        val socket2 = Socket()
+                        socket2.connect(java.net.InetSocketAddress(ip, port), PING_TIMEOUT_MS)
+                        socket2.close()
+                        promise.resolve(port)
+                        found = true
+                        break
+                    } catch (_: Exception) {}
+                }
+                if (!found) {
+                    promise.resolve(0) // Aucun port ne repond
+                }
             } finally {
                 try { socket.close() } catch (_: Exception) {}
             }
         } catch (e: Exception) {
-            promise.resolve(false)
+            promise.resolve(0)
         }
     }
 
@@ -66,7 +82,7 @@ class NetworkModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
 
             val parts = baseIP.split(".")
             val prefix = "${parts[0]}.${parts[1]}.${parts[2]}"
-            val found = ConcurrentLinkedQueue<String>()
+            val found = ConcurrentLinkedQueue<Pair<String, Int>>()
 
             // Pool de 20 threads max (pas 254 simultanes)
             val pool = Executors.newFixedThreadPool(20)
@@ -76,12 +92,15 @@ class NetworkModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
                 pool.submit {
                     try {
                         val ip = "$prefix.$i"
-                        val socket = Socket()
-                        try {
-                            socket.connect(java.net.InetSocketAddress(ip, PORT), TIMEOUT_MS)
-                            found.add(ip)
-                        } finally {
-                            try { socket.close() } catch (_: Exception) {}
+                        // Tester les ports dans l'ordre
+                        for (port in PORT_MIN..PORT_MAX) {
+                            try {
+                                val socket = Socket()
+                                socket.connect(java.net.InetSocketAddress(ip, port), TIMEOUT_MS)
+                                socket.close()
+                                found.add(Pair(ip, port))
+                                break
+                            } catch (_: Exception) {}
                         }
                     } finally {
                         latch.countDown()
@@ -95,7 +114,8 @@ class NetworkModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
 
             val result = found.firstOrNull()
             if (result != null) {
-                promise.resolve(result)
+                // Retourner IP:port
+                promise.resolve("${result.first}:${result.second}")
             } else {
                 promise.reject("NOT_FOUND", "Aucun serveur trouve sur le reseau")
             }
