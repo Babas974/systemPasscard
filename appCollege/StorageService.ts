@@ -14,7 +14,7 @@ const KEYS = {
   HISTORY: '@appCollege/history',
 };
 
-export const DEFAULT_IP = '127.0.0.1';
+export const DEFAULT_IP = '';
 export const HISTORY_LIMIT = 50;
 
 export interface QueueEntry {
