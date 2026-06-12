@@ -42,7 +42,8 @@ const loadSavedConfig = async (): Promise<void> => {
   } catch {}
 };
 
-const configReady: Promise<void> = loadSavedConfig();
+// Init au chargement du module
+loadSavedConfig();
 
 export const onConnectionChange = (cb: (connecte: boolean) => void) => {
   listeners.push(cb);
@@ -197,7 +198,6 @@ const persistDiscoveredPort = async (port: number): Promise<void> => {
 
 // Resolution rapide de l'URL active
 export const resolveBaseUrl = async (): Promise<string> => {
-  await configReady;
   // 1. Tester l'URL courante (ping natif 200ms)
   const foundPort = await testCurrentUrl();
   if (foundPort > 0) {
