@@ -1,6 +1,6 @@
 // Logger.ts
 // Service de logs avec stockage local + envoi HTTP au PC.
-// - Stockage local : les logs survivent à la déconnexion
+// - Stockage local : les logs survivent a la deconnexion et au restart
 // - Envoi HTTP : flush periodique vers POST /debug/log
 // - FATAL/ERROR : flush immediat
 // - Buffer local accessible pour la console debug
@@ -17,24 +17,59 @@ interface LogEntry {
   envoye: boolean;
 }
 
-// Buffer local des logs (max 500)
-const logsLocaux: LogEntry[] = [];
 const MAX_LOGS_LOCAUX = 500;
+const MAX_QUEUE = 200;
+const STORAGE_KEY = '@appCollege/logs';
+
+// Buffer local des logs
+let logsLocaux: LogEntry[] = [];
 
 // Queue d'envoi au PC
 const fileQueue: LogEntry[] = [];
-const MAX_QUEUE = 200;
 
 let flushInterval: ReturnType<typeof setInterval> | null = null;
 let flushEnCours = false;
 
-// --- Stockage local ---
+// --- Stockage local (AsyncStorage) ---
+
+const getAsyncStorage = (): any | null => {
+  try {
+    const mod = require('@react-native-async-storage/async-storage');
+    return mod && mod.default ? mod.default : mod;
+  } catch {
+    return null;
+  }
+};
+
+async function persisterLogs(): Promise<void> {
+  const AS = getAsyncStorage();
+  if (!AS) return;
+  try {
+    await AS.setItem(STORAGE_KEY, JSON.stringify(logsLocaux.slice(0, MAX_LOGS_LOCAUX)));
+  } catch {}
+}
+
+async function chargerLogsPersistes(): Promise<void> {
+  const AS = getAsyncStorage();
+  if (!AS) return;
+  try {
+    const raw = await AS.getItem(STORAGE_KEY);
+    if (raw) {
+      logsLocaux = JSON.parse(raw);
+    }
+  } catch {}
+}
+
+// Charger au demarrage
+chargerLogsPersistes();
 
 function ajouterLogLocal(entry: LogEntry): void {
   logsLocaux.unshift(entry);
   if (logsLocaux.length > MAX_LOGS_LOCAUX) {
     logsLocaux.pop();
   }
+  // Persister en arriere-plan
+  persisterLogs();
 }
 
 export function getLogsLocaux(limit: number = 100): LogEntry[] {
@@ -45,6 +80,11 @@ export function getNbErreursLocales(): number {
   return logsLocaux.filter(
     (l) => l.niveau === 'error' || l.niveau === 'fatal',
   ).length;
+}
+
+export function viderLogsLocaux(): void {
+  logsLocaux = [];
+  persisterLogs();
 }
 
 // --- Envoi HTTP ---

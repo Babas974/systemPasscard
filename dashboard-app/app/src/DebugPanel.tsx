@@ -178,7 +178,16 @@ export default function DebugPanel({ ouvert, surFermer }: Props) {
 
   const recharger = useCallback(async () => {
     const result = await fetchLogs(port, 200);
-    setLogs(result.logs);
+    if (result.ok) {
+      setLogs((prev) => {
+        const byId = new Map<number, LogEntry>();
+        for (const l of result.logs) byId.set(l.id, l);
+        for (const l of prev) if (!byId.has(l.id)) byId.set(l.id, l);
+        return Array.from(byId.values())
+          .sort((a, b) => b.id - a.id)
+          .slice(0, 500);
+      });
+    }
     setTotalLogs(result.total);
     setStatut(result.ok ? "connecte" : "deconnecte");
   }, [port]);
