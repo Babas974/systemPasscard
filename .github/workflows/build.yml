@@ -56,10 +56,10 @@ jobs:
         with:
           version: 9
 
-      - name: Installer Node 22
+      - name: Installer Node 24
         uses: actions/setup-node@v5
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "pnpm"
           cache-dependency-path: dashboard-app/app/pnpm-lock.yaml
 
@@ -94,10 +94,10 @@ jobs:
         with:
           version: 9
 
-      - name: Installer Node 22
+      - name: Installer Node 24
         uses: actions/setup-node@v5
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "pnpm"
           cache-dependency-path: appCollege/pnpm-lock.yaml
 
@@ -130,10 +130,10 @@ jobs:
         with:
           version: 9
 
-      - name: Installer Node 22
+      - name: Installer Node 24
         uses: actions/setup-node@v5
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "pnpm"
           cache-dependency-path: dashboard-app/app/pnpm-lock.yaml
 
@@ -179,7 +179,7 @@ jobs:
 
   tauri-windows:
     name: Build Tauri (Windows)
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
     needs: [rust-tests, react-tests] # <--- Bloque le build si les tests échouent
     timeout-minutes: 60
     steps:
@@ -190,10 +190,10 @@ jobs:
         with:
           version: 9
 
-      - name: Installer Node 22
+      - name: Installer Node 24
         uses: actions/setup-node@v5
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "pnpm"
           cache-dependency-path: dashboard-app/app/pnpm-lock.yaml
 
