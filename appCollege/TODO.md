@@ -64,7 +64,6 @@
 - **Auth HTTP** : ✅ API key dans `~/.config/appcollege/api_key`, header `X-API-Key`
 
 ### Priorité MOYENNE
-- **Rate limiting** : `actix-governor` sur endpoints
 - **CSP** : activer dans `tauri.conf.json`
 - **Path traversal** : valider chemin `exporter_csv`
 - **relancer_serveur** : implémenter `ServerHandle::stop()` au lieu du stub

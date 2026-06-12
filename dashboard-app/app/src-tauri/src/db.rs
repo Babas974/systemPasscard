@@ -9,32 +9,35 @@ use std::sync::{Arc, Mutex};
 
 // Cle de chiffrement pour SQLCipher
 // Generee au premier demarrage et stockee dans le repertoire de config
+fn generate_key() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!("{:032x}", seed)
+}
+
 fn get_or_create_passphrase() -> String {
     let config_path = dirs::config_dir()
         .unwrap_or_default()
         .join("appcollege")
         .join("db_key");
-    
+
     if config_path.exists() {
-        std::fs::read_to_string(&config_path)
+        let key = std::fs::read_to_string(&config_path)
             .unwrap_or_default()
             .trim()
-            .to_string()
-    } else {
-        // Generer une cle aleatoire de 32 caracteres
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let seed = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        let key = format!("{:032x}", seed);
-        
-        // Creer le repertoire si necessaire
-        let _ = std::fs::create_dir_all(config_path.parent().unwrap());
-        let _ = std::fs::write(&config_path, &key);
-        
-        key
+            .to_string();
+        if !key.is_empty() {
+            return key;
+        }
     }
+
+    let key = generate_key();
+    let _ = std::fs::create_dir_all(config_path.parent().unwrap());
+    let _ = std::fs::write(&config_path, &key);
+    key
 }
 
 fn echapper_like(pattern: &str) -> String {
@@ -61,11 +64,14 @@ pub struct Scan {
 pub fn init_db() -> Result<Arc<Mutex<Connection>>, rusqlite::Error> {
     let passphrase = get_or_create_passphrase();
     let conn = Connection::open("scans.db")?;
-    // Appliquer la cle de chiffrement immediatement
-    conn.execute_batch(&format!("PRAGMA key='{}';", passphrase))?;
+    let pragma = if passphrase.is_empty() {
+        "PRAGMA journal_mode=WAL;".to_string()
+    } else {
+        format!("PRAGMA key='{}'; PRAGMA journal_mode=WAL;", passphrase)
+    };
+    conn.execute_batch(&pragma)?;
     conn.execute_batch(
-        "PRAGMA journal_mode=WAL;
-         CREATE TABLE IF NOT EXISTS scans (
+        "CREATE TABLE IF NOT EXISTS scans (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             contenu TEXT NOT NULL,
             date_heure TEXT NOT NULL
