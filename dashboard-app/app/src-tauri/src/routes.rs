@@ -2,7 +2,7 @@
 // Handlers HTTP partages entre le binaire Tauri (main.rs) et le serveur headless (bin/server.rs)
 
 use crate::db;
-use actix_web::{web, HttpResponse, HttpRequest};
+use actix_web::{web, HttpResponse};
 use rusqlite::{params, Connection};
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
@@ -12,27 +12,6 @@ pub struct HttpState {
     pub db: Arc<Mutex<Connection>>,
     pub emitter: db::ScanEmitter,
     pub log_emitter: db::LogEmitter,
-    pub api_key: String,
-}
-
-// Valider la cle API depuis les headers
-fn validate_api_key(req: &HttpRequest, state: &HttpState) -> bool {
-    // Endpoint /health est public (pas besoin d'auth)
-    if req.path() == "/health" {
-        return true;
-    }
-    
-    // Verifier le header X-API-Key
-    match req.headers().get("X-API-Key") {
-        Some(key) => {
-            if let Ok(key_str) = key.to_str() {
-                key_str == state.api_key
-            } else {
-                false
-            }
-        }
-        None => false,
-    }
 }
 
 #[derive(Deserialize)]
@@ -43,15 +22,7 @@ pub struct ScanRequest {
 pub async fn post_scan(
     data: web::Data<HttpState>,
     body: web::Json<ScanRequest>,
-    req: HttpRequest,
 ) -> HttpResponse {
-    // Valider la cle API
-    if !validate_api_key(&req, &data) {
-        return HttpResponse::Unauthorized().json(serde_json::json!({
-            "erreur": "Cle API invalide ou manquante"
-        }));
-    }
-    
     let contenu = body.contenu.trim().to_string();
     if contenu.is_empty() {
         return HttpResponse::BadRequest().json(serde_json::json!({
@@ -97,15 +68,7 @@ pub struct ScansQuery {
 pub async fn get_scans(
     data: web::Data<HttpState>,
     query: web::Query<ScansQuery>,
-    req: HttpRequest,
 ) -> HttpResponse {
-    // Valider la cle API
-    if !validate_api_key(&req, &data) {
-        return HttpResponse::Unauthorized().json(serde_json::json!({
-            "erreur": "Cle API invalide ou manquante"
-        }));
-    }
-    
     let page = query.page.unwrap_or(1).max(1);
     let taille = query.taille.unwrap_or(500).clamp(1, 5000);
     let recherche = query.recherche.as_deref();
@@ -138,15 +101,7 @@ pub async fn get_scans(
 pub async fn delete_scan(
     data: web::Data<HttpState>,
     path: web::Path<i64>,
-    req: HttpRequest,
 ) -> HttpResponse {
-    // Valider la cle API
-    if !validate_api_key(&req, &data) {
-        return HttpResponse::Unauthorized().json(serde_json::json!({
-            "erreur": "Cle API invalide ou manquante"
-        }));
-    }
-    
     let id = path.into_inner();
     match data.db.lock() {
         Ok(conn) => match db::supprimer_par_id(&conn, id) {
@@ -185,7 +140,6 @@ pub async fn health(data: web::Data<HttpState>) -> HttpResponse {
         })
         .unwrap_or(0);
 
-    // Memoire du processus courant (RSS en Ko) sur Linux/macOS.
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     let memoire_ko: Option<u64> = std::fs::read_to_string("/proc/self/statm")
         .ok()
@@ -217,15 +171,7 @@ pub struct LogRequest {
 pub async fn post_log(
     data: web::Data<HttpState>,
     body: web::Json<LogRequest>,
-    req: HttpRequest,
 ) -> HttpResponse {
-    // Valider la cle API
-    if !validate_api_key(&req, &data) {
-        return HttpResponse::Unauthorized().json(serde_json::json!({
-            "erreur": "Cle API invalide ou manquante"
-        }));
-    }
-    
     let source = body.source.trim();
     let message = body.message.trim();
     if source.is_empty() || message.is_empty() {
@@ -275,15 +221,7 @@ pub struct LogsQuery {
 pub async fn get_logs(
     data: web::Data<HttpState>,
     query: web::Query<LogsQuery>,
-    req: HttpRequest,
 ) -> HttpResponse {
-    // Valider la cle API
-    if !validate_api_key(&req, &data) {
-        return HttpResponse::Unauthorized().json(serde_json::json!({
-            "erreur": "Cle API invalide ou manquante"
-        }));
-    }
-    
     let limit = query.limit.unwrap_or(200).clamp(1, 5000);
     let niveau = query.niveau.as_deref();
 
@@ -329,14 +267,7 @@ pub async fn get_logs(
     }
 }
 
-pub async fn delete_logs(data: web::Data<HttpState>, req: HttpRequest) -> HttpResponse {
-    // Valider la cle API
-    if !validate_api_key(&req, &data) {
-        return HttpResponse::Unauthorized().json(serde_json::json!({
-            "erreur": "Cle API invalide ou manquante"
-        }));
-    }
-    
+pub async fn delete_logs(data: web::Data<HttpState>) -> HttpResponse {
     match data.db.lock() {
         Ok(conn) => match db::supprimer_tous_logs(&conn) {
             Ok(n) => HttpResponse::Ok().json(serde_json::json!({
@@ -353,14 +284,7 @@ pub async fn delete_logs(data: web::Data<HttpState>, req: HttpRequest) -> HttpRe
     }
 }
 
-pub async fn seed(data: web::Data<HttpState>, req: HttpRequest) -> HttpResponse {
-    // Valider la cle API
-    if !validate_api_key(&req, &data) {
-        return HttpResponse::Unauthorized().json(serde_json::json!({
-            "erreur": "Cle API invalide ou manquante"
-        }));
-    }
-    
+pub async fn seed(data: web::Data<HttpState>) -> HttpResponse {
     let prenoms = [
         "Lea", "Lucas", "Hugo", "Emma", "Manon", "Theo", "Chloe", "Nathan", "Camille", "Julien",
     ];

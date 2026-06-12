@@ -169,7 +169,6 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-type Etape = 1 | 2;
 type Screen = 'main' | 'settings';
 
 const QUEUE_TRAITEMENT_MS = 3000;
@@ -186,7 +185,6 @@ export function App() {
   const styles = createStyles(theme);
 
   const [screen, setScreen] = useState<Screen>('main');
-  const [etape, setEtape] = useState<Etape>(1);
   const [nom, setNom] = useState('');
   const [prenom, setPrenom] = useState('');
   const [pcConnecte, setPcConnecte] = useState(false);
@@ -367,18 +365,6 @@ export function App() {
     setPrenom(text);
   };
 
-  const handleSuivant = () => {
-    if (etape === 1 && nom.trim().length > 0) {
-      setEtape(2);
-    }
-  };
-
-  const handleRetour = () => {
-    if (etape === 2) {
-      setEtape(1);
-    }
-  };
-
   const handleValider = async () => {
     if (validationEnCours.current) return;
     if (!nom.trim() || !prenom.trim()) return;
@@ -425,7 +411,6 @@ export function App() {
   const reset = () => {
     setNom('');
     setPrenom('');
-    setEtape(1);
   };
 
   // --- Rendu parametres ---
@@ -466,72 +451,38 @@ export function App() {
         />
       </View>
 
-      {/* Etape indicator */}
-      <Text style={styles.etapeLabel}>
-        ── Etape {etape} sur 2 ──────────
-      </Text>
+      {/* Nom */}
+      <Text style={styles.label}>Nom de famille</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="NOM DE FAMILLE"
+        placeholderTextColor={theme.placeholder}
+        value={nom}
+        onChangeText={handleNomChange}
+        autoCapitalize="characters"
+        autoFocus
+      />
 
-      {/* Etape 1 : Nom */}
-      {etape >= 1 && (
-        <>
-          <Text style={styles.label}>
-            {etape === 1 ? 'Tape ton nom de famille' : nom.trim() ? `Nom : ${nom.trim()}` : ''}
-          </Text>
-          <TextInput
-            style={styles.input}
-            placeholder="NOM DE FAMILLE"
-            placeholderTextColor={theme.placeholder}
-            value={nom}
-            onChangeText={handleNomChange}
-            autoCapitalize="characters"
-            editable={etape === 1}
-            autoFocus={etape === 1}
-          />
-          {etape === 1 && nom.trim().length > 0 && (
-            <TouchableOpacity
-              style={styles.boutonSuivant}
-              onPress={handleSuivant}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.texteBouton}>Suivant</Text>
-            </TouchableOpacity>
-          )}
-        </>
-      )}
+      {/* Prenom */}
+      <Text style={styles.label}>Prenom</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="PRENOM"
+        placeholderTextColor={theme.placeholder}
+        value={prenom}
+        onChangeText={handlePrenomChange}
+        autoCapitalize="words"
+      />
 
-      {/* Etape 2 : Prenom + Valider */}
-      {etape >= 2 && (
-        <>
-          <Text style={styles.label}>
-            {etape === 2 ? 'Tape ton prenom' : ''}
-          </Text>
-          <TextInput
-            style={styles.input}
-            placeholder="PRENOM"
-            placeholderTextColor={theme.placeholder}
-            value={prenom}
-            onChangeText={handlePrenomChange}
-            autoCapitalize="words"
-            editable={etape === 2}
-            autoFocus={etape === 2}
-          />
-          <TouchableOpacity
-            style={styles.boutonRetour}
-            onPress={handleRetour}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.texteBoutonRetour}>Retour</Text>
-          </TouchableOpacity>
-          {prenom.trim().length > 0 && (
-            <TouchableOpacity
-              style={styles.boutonValider}
-              onPress={handleValider}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.texteBouton}>VALIDER</Text>
-            </TouchableOpacity>
-          )}
-        </>
+      {/* Valider */}
+      {nom.trim().length > 0 && prenom.trim().length > 0 && (
+        <TouchableOpacity
+          style={styles.boutonValider}
+          onPress={handleValider}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.texteBouton}>VALIDER</Text>
+        </TouchableOpacity>
       )}
 
       {/* Toast */}

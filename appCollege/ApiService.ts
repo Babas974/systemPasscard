@@ -13,14 +13,12 @@ const PORT_MIN = 8389; // SYNC: NetworkModule.kt, main.rs
 const PORT_MAX = 8399; // SYNC: NetworkModule.kt, main.rs
 const REQUEST_TIMEOUT_MS = 10000;
 const PING_TIMEOUT_MS = 800;
-const API_KEY_HEADER = 'X-API-Key';
 
 // Port decouvert dynamiquement
 let discoveredPort: number = PORT_MIN;
 let currentBaseUrl: string = `http://127.0.0.1:${PORT_MIN}`;
 let discoveryEnCours = false;
 let deviceIP: string | null = null;
-let apiKey: string | null = null;
 
 // URLs candidates (127.0.0.1 + localhost sur tous les ports possibles)
 const CANDIDATE_URLS: string[] = [
@@ -74,12 +72,6 @@ export const setIP = (ip: string) => {
   deviceIP = ip.trim();
 };
 
-export const setApiKey = (key: string) => {
-  apiKey = key;
-};
-
-export const getApiKey = (): string | null => apiKey;
-
 export const getIP = (): string => {
   if (deviceIP) return deviceIP;
   const m = currentBaseUrl.match(/^http:\/\/([^:]+):/);
@@ -120,13 +112,7 @@ const fetchWithTimeout = async (
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const headers: Record<string, string> = {
-      ...((options.headers as Record<string, string>) || {}),
-    };
-    if (apiKey) {
-      headers[API_KEY_HEADER] = apiKey;
-    }
-    return await fetch(url, { ...options, headers, signal: controller.signal });
+    return await fetch(url, { ...options, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
