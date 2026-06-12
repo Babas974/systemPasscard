@@ -1,44 +1,11 @@
 // db.rs
 // Logique de base de donnees SQLite (utilisee par main.rs et bin/server.rs)
-// Base de donnees chiffree via SQLCipher.
+// NOTE: Les communications HTTP utilisent TLS (actix-web + CORS restreint au LAN).
 
 use chrono::Local;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
-
-// Cle de chiffrement pour SQLCipher
-// Generee au premier demarrage et stockee dans le repertoire de config
-fn generate_key() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let seed = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("{:032x}", seed)
-}
-
-fn get_or_create_passphrase() -> String {
-    let config_path = dirs::config_dir()
-        .unwrap_or_default()
-        .join("appcollege")
-        .join("db_key");
-
-    if config_path.exists() {
-        let key = std::fs::read_to_string(&config_path)
-            .unwrap_or_default()
-            .trim()
-            .to_string();
-        if !key.is_empty() {
-            return key;
-        }
-    }
-
-    let key = generate_key();
-    let _ = std::fs::create_dir_all(config_path.parent().unwrap());
-    let _ = std::fs::write(&config_path, &key);
-    key
-}
 
 fn echapper_like(pattern: &str) -> String {
     let mut out = String::with_capacity(pattern.len());
@@ -62,16 +29,10 @@ pub struct Scan {
 }
 
 pub fn init_db() -> Result<Arc<Mutex<Connection>>, rusqlite::Error> {
-    let passphrase = get_or_create_passphrase();
     let conn = Connection::open("scans.db")?;
-    let pragma = if passphrase.is_empty() {
-        "PRAGMA journal_mode=WAL;".to_string()
-    } else {
-        format!("PRAGMA key='{}'; PRAGMA journal_mode=WAL;", passphrase)
-    };
-    conn.execute_batch(&pragma)?;
     conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS scans (
+        "PRAGMA journal_mode=WAL;
+         CREATE TABLE IF NOT EXISTS scans (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             contenu TEXT NOT NULL,
             date_heure TEXT NOT NULL
@@ -91,10 +52,7 @@ pub fn init_db() -> Result<Arc<Mutex<Connection>>, rusqlite::Error> {
 }
 
 pub fn init_db_at(path: &str) -> Result<Connection, rusqlite::Error> {
-    let passphrase = get_or_create_passphrase();
     let conn = Connection::open(path)?;
-    // Appliquer la cle de chiffrement immediatement
-    conn.execute_batch(&format!("PRAGMA key='{}';", passphrase))?;
     conn.execute_batch(
         "PRAGMA journal_mode=WAL;
          CREATE TABLE IF NOT EXISTS scans (
