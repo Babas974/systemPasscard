@@ -213,12 +213,17 @@ export default function SettingsScreen({
               <Text style={styles.settingsHistoriqueVide}>Aucun passage enregistre.</Text>
             ) : (
               historique.map((e) => (
-                <View key={e.id} style={styles.settingsHistoriqueItem}>
-                  <Text style={styles.settingsHistoriqueNom}>{e.contenu}</Text>
+                <TouchableOpacity
+                  key={e.id}
+                  style={styles.settingsHistoriqueItem}
+                  onPress={() => Alert.alert('Scan', e.contenu)}
+                  activeOpacity={0.6}
+                >
+                  <Text style={styles.settingsHistoriqueNom} numberOfLines={1}>{e.contenu}</Text>
                   <Text style={styles.settingsHistoriqueHeure}>
                     {new Date(e.creeLe).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                   </Text>
-                </View>
+                </TouchableOpacity>
               ))
             )}
           </ScrollView>
