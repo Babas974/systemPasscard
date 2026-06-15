@@ -178,6 +178,15 @@ export default function ConfigPanel({ ouvert, surFermer }: Props) {
     }
   };
 
+  const handleViderAnciensLogs = async () => {
+    try {
+      const nb = await invoke<number>("vider_anciens_logs");
+      setMessage(`${nb} fichier(s) log(s) ancien(s) supprime(s)`);
+    } catch (e) {
+      setMessage("Erreur: " + String(e));
+    }
+  };
+
   if (!ouvert) return null;
 
   return (
@@ -265,6 +274,15 @@ export default function ConfigPanel({ ouvert, surFermer }: Props) {
             >
               Actualiser
             </button>
+            <button
+              style={{ ...styles.bouton, ...styles.boutonDanger }}
+              onClick={handleViderAnciensLogs}
+            >
+              Vider les anciens logs
+            </button>
+          </div>
+          <div style={styles.infoTexte}>
+            Supprime les fichiers logs anterieurs a hier.
           </div>
         </div>
 

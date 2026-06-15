@@ -3,8 +3,10 @@
 
 use crate::db;
 use actix_web::{web, HttpResponse};
+use chrono::NaiveDate;
 use rusqlite::{params, Connection};
 use serde::Deserialize;
+use std::io::Write;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
@@ -12,6 +14,7 @@ pub struct HttpState {
     pub db: Arc<Mutex<Connection>>,
     pub emitter: db::ScanEmitter,
     pub log_emitter: db::LogEmitter,
+    pub log_dir: std::path::PathBuf,
 }
 
 #[derive(Deserialize)]
@@ -168,6 +171,46 @@ pub struct LogRequest {
     pub envoyer_a_tous: Option<bool>,
 }
 
+/// Ajouter un log au fichier date du jour
+fn ecrire_log_fichier(log_dir: &std::path::Path, niveau: &str, source: &str, message: &str) {
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let chemin = log_dir.join(format!("logs-{}.log", today));
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(chemin)
+    {
+        let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string();
+        let _ = writeln!(file, "[{}] [{}] [{}] {}", ts, niveau.to_uppercase(), source, message);
+    }
+}
+
+/// Vider les fichiers logs anterieurs a hier
+pub fn vider_logs_anciens(log_dir: &std::path::Path) -> Result<u32, String> {
+    let hier = chrono::Local::now().date_naive() - chrono::Duration::days(1);
+    let mut supprimes = 0u32;
+    let entries = std::fs::read_dir(log_dir).map_err(|e| e.to_string())?;
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if !path.is_file() { continue; }
+        let name = match path.file_stem().and_then(|s| s.to_str()) {
+            Some(n) => n,
+            None => continue,
+        };
+        // Noms attendus : logs-YYYY-MM-DD.log
+        if let Some(date_str) = name.strip_prefix("logs-") {
+            if let Ok(date) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+                if date < hier {
+                    let _ = std::fs::remove_file(&path);
+                    supprimes += 1;
+                }
+            }
+        }
+    }
+    Ok(supprimes)
+}
+
 pub async fn post_log(
     data: web::Data<HttpState>,
     body: web::Json<LogRequest>,
@@ -184,31 +227,50 @@ pub async fn post_log(
         .as_deref()
         .unwrap_or("info")
         .to_lowercase();
-    let date_heure = db::date_heure_maintenant_ms();
 
-    let inserted_id = match data.db.lock() {
-        Ok(conn) => match db::inserer_log(&conn, source, &niveau, message, &date_heure) {
-            Ok(id) => Some(id),
+    // Info : on emet en temps reel uniquement (pas de fichier, pas de DB)
+    if niveau == "info" {
+        let fake_id = chrono::Utc::now().timestamp_millis();
+        let date_heure = db::date_heure_maintenant_ms();
+        (data.log_emitter)(fake_id, source, &niveau, message, &date_heure);
+        return HttpResponse::Ok().json(serde_json::json!({
+            "statut": "ok",
+            "id": fake_id
+        }));
+    }
+
+    // Error/Fatal/Warn/Debug : ecrire dans le fichier date
+    ecrire_log_fichier(&data.log_dir, &niveau, source, message);
+
+    // Error/Fatal : inserer dans la DB (pour affichage permanent)
+    let date_heure = db::date_heure_maintenant_ms();
+    let log_id = if niveau == "error" || niveau == "fatal" {
+        match data.db.lock() {
+            Ok(conn) => match db::inserer_log(&conn, source, &niveau, message, &date_heure) {
+                Ok(id) => id,
+                Err(e) => {
+                    return HttpResponse::InternalServerError().json(serde_json::json!({
+                        "erreur": e.to_string()
+                    }));
+                }
+            },
             Err(e) => {
                 return HttpResponse::InternalServerError().json(serde_json::json!({
                     "erreur": e.to_string()
                 }));
             }
-        },
-        Err(e) => {
-            return HttpResponse::InternalServerError().json(serde_json::json!({
-                "erreur": e.to_string()
-            }));
         }
+    } else {
+        // Warn/Debug : id temporaire pour l'event Tauri
+        chrono::Utc::now().timestamp_millis()
     };
 
-    if let Some(id) = inserted_id {
-        (data.log_emitter)(id, source, &niveau, message, &date_heure);
-    }
+    // Emettre via Tauri event (temps reel dans l'UI)
+    (data.log_emitter)(log_id, source, &niveau, message, &date_heure);
 
     HttpResponse::Ok().json(serde_json::json!({
         "statut": "ok",
-        "id": inserted_id.unwrap_or(0)
+        "id": log_id
     }))
 }
 

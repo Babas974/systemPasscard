@@ -13,6 +13,7 @@ struct AppState {
     startup: Instant,
     server_handle: Arc<Mutex<Option<actix_web::dev::ServerHandle>>>,
     config_port: Arc<Mutex<u16>>,
+    log_dir: Arc<Mutex<std::path::PathBuf>>,
 }
 
 #[tauri::command]
@@ -148,6 +149,12 @@ fn relancer_serveur(state: State<'_, AppState>) -> Result<String, String> {
     }
 }
 
+#[tauri::command]
+fn vider_anciens_logs(state: State<'_, AppState>) -> Result<u32, String> {
+    let log_dir = state.log_dir.lock().map_err(|e| e.to_string())?.clone();
+    routes::vider_logs_anciens(&log_dir)
+}
+
 fn main() {
     let db_handle = db::init_db().expect("Erreur ouverture base SQLite");
     let db_http = db_handle.clone();
@@ -164,6 +171,13 @@ fn main() {
     } else {
         8389
     };
+
+    // Dossier des logs
+    let log_dir = dirs::data_dir()
+        .unwrap_or_default()
+        .join("appcollege")
+        .join("logs");
+    let _ = std::fs::create_dir_all(&log_dir);
 
     fn build_emitter(app: AppHandle) -> db::ScanEmitter {
         Arc::new(move |id, contenu, date_heure| {
@@ -191,6 +205,7 @@ fn main() {
 
     let server_handle = Arc::new(Mutex::new(None));
     let config_port = Arc::new(Mutex::new(port));
+    let log_dir_arc = Arc::new(Mutex::new(log_dir.clone()));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -201,6 +216,7 @@ fn main() {
             startup,
             server_handle: server_handle.clone(),
             config_port: config_port.clone(),
+            log_dir: log_dir_arc.clone(),
         })
         .setup(move |app| {
             let app_handle = app.handle().clone();
@@ -208,6 +224,7 @@ fn main() {
                 db: db_http,
                 emitter: build_emitter(app_handle.clone()),
                 log_emitter: build_log_emitter(app_handle),
+                log_dir: log_dir.clone(),
             };
 
             let server_handle_clone = server_handle.clone();
@@ -276,7 +293,8 @@ fn main() {
             forcer_focus,
             obtenir_port_serveur,
             changer_port_serveur,
-            relancer_serveur
+            relancer_serveur,
+            vider_anciens_logs
         ])
         .run(tauri::generate_context!())
         .expect("Erreur lors de l'execution du moteur d'application Tauri");

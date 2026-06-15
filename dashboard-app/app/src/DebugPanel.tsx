@@ -208,14 +208,23 @@ export default function DebugPanel({ ouvert, surFermer }: Props) {
   useEffect(() => {
     if (!ouvert) return;
     let cancelled = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
     const setup = async () => {
       try {
         const unlisten = await listen<LogEntry>("nouveau-log", (event) => {
           if (cancelled) return;
+          const entry = event.payload;
           setLogs((prev) => {
-            const next = [event.payload, ...prev];
+            const next = [entry, ...prev];
             return next.slice(0, 500);
           });
+          // Info : auto-supprimer apres 10s
+          if (entry.niveau === "info") {
+            const timer = setTimeout(() => {
+              setLogs((prev) => prev.filter((l) => l.id !== entry.id));
+            }, 10000);
+            timers.push(timer);
+          }
         });
         if (cancelled) {
           unlisten();
@@ -229,6 +238,7 @@ export default function DebugPanel({ ouvert, surFermer }: Props) {
     setup();
     return () => {
       cancelled = true;
+      timers.forEach(clearTimeout);
       if (unlistenRef.current) {
         unlistenRef.current();
         unlistenRef.current = null;
@@ -246,6 +256,15 @@ export default function DebugPanel({ ouvert, surFermer }: Props) {
     await deleteAllLogs(port);
     setLogs([]);
     setTotalLogs(0);
+  };
+
+  const viderAnciensLogs = async () => {
+    try {
+      const nb = await invoke<number>("vider_anciens_logs");
+      alert(`${nb} ancien(s) log(s) supprime(s)`);
+    } catch (e) {
+      console.warn("vider_anciens_logs a echoue:", e);
+    }
   };
 
   const logsFiltres = logs.filter((l) => {
@@ -273,8 +292,11 @@ export default function DebugPanel({ ouvert, surFermer }: Props) {
           <button style={styles.btnIcone} onClick={recharger} title="Recharger">
             ↻
           </button>
-          <button style={styles.btnIcone} onClick={vider} title="Vider tous les logs">
+          <button style={styles.btnIcone} onClick={vider} title="Vider les logs DB (error/fatal)">
             🗑
+          </button>
+          <button style={styles.btnIcone} onClick={viderAnciensLogs} title="Supprimer les fichiers logs avant hier">
+            📁
           </button>
           <button
             style={styles.btnIcone}
