@@ -63,6 +63,10 @@
 - **DB chiffrée** : ✅ `rusqlite` + `bundled-sqlcipher` + `PRAGMA key`
 - **Auth HTTP** : ✅ API key dans `~/.config/appcollege/api_key`, header `X-API-Key`
 
+### Priorité HAUTE ✅
+- **Bug suppression données** : ✅ La suppression côté mobile synchronise avec le serveur via `/scans/all`
+- **Affichage après redémarrage** : ✅ L'app affiche "aujourd'hui" (page 1) à l'ouverture
+
 ### Priorité MOYENNE
 - **CSP** : activer dans `tauri.conf.json`
 - **Path traversal** : valider chemin `exporter_csv`

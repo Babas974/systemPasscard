@@ -311,3 +311,18 @@ export const testerConnexion = async (): Promise<boolean> => {
   const port = ip ? await pingNative(ip) : await pingUrl(baseUrl, PING_TIMEOUT_MS);
   return port > 0;
 };
+
+export const supprimerToutServeur = async (): Promise<boolean> => {
+  const baseUrl = await resolveBaseUrl();
+  if (!baseUrl) return false;
+  try {
+    const response = await fetchWithTimeout(
+      `${baseUrl}/scans/all`,
+      { method: 'DELETE' },
+      REQUEST_TIMEOUT_MS,
+    );
+    return response.ok;
+  } catch {
+    return false;
+  }
+};

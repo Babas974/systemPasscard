@@ -120,6 +120,57 @@ pub async fn delete_scan(
     }
 }
 
+pub async fn delete_scans_tout(data: web::Data<HttpState>) -> HttpResponse {
+    match data.db.lock() {
+        Ok(conn) => match db::supprimer_tout(&conn) {
+            Ok(n) => HttpResponse::Ok().json(serde_json::json!({
+                "statut": "ok",
+                "supprimes": n
+            })),
+            Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+                "erreur": e.to_string()
+            })),
+        },
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "erreur": e.to_string()
+        })),
+    }
+}
+
+pub async fn delete_scans_aujourd_hui(data: web::Data<HttpState>) -> HttpResponse {
+    match data.db.lock() {
+        Ok(conn) => match db::supprimer_par_date(&conn, &db::date_du_jour()) {
+            Ok(n) => HttpResponse::Ok().json(serde_json::json!({
+                "statut": "ok",
+                "supprimes": n
+            })),
+            Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+                "erreur": e.to_string()
+            })),
+        },
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "erreur": e.to_string()
+        })),
+    }
+}
+
+pub async fn delete_scans_precedents(data: web::Data<HttpState>) -> HttpResponse {
+    match data.db.lock() {
+        Ok(conn) => match db::supprimer_hors_date(&conn, &db::date_du_jour()) {
+            Ok(n) => HttpResponse::Ok().json(serde_json::json!({
+                "statut": "ok",
+                "supprimes": n
+            })),
+            Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+                "erreur": e.to_string()
+            })),
+        },
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "erreur": e.to_string()
+        })),
+    }
+}
+
 pub async fn health(data: web::Data<HttpState>) -> HttpResponse {
     let total: i64 = data
         .db

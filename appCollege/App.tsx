@@ -33,6 +33,7 @@ import {
   getBackoffMs,
   onConnectionChange,
   resetBackoff,
+  supprimerToutServeur,
 } from './ApiService';
 import {
   loadIP,
@@ -422,7 +423,11 @@ export function App() {
         ipActuelle={ipPC}
         pcConnecte={pcConnecte}
         onClose={() => setScreen('main')}
-        onViderHistorique={async () => { setHistorique([]); await clearHistoryStorage(); }}
+        onViderHistorique={async () => {
+          setHistorique([]);
+          await clearHistoryStorage();
+          await supprimerToutServeur();
+        }}
         onTesterConnexion={testerConnexion}
         historique={historique}
       />

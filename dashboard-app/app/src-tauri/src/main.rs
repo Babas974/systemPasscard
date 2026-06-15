@@ -253,6 +253,9 @@ fn main() {
                             .route("/scan", actix_web::web::post().to(routes::post_scan))
                             .route("/scans", actix_web::web::get().to(routes::get_scans))
                             .route("/scan/{id}", actix_web::web::delete().to(routes::delete_scan))
+                            .route("/scans/all", actix_web::web::delete().to(routes::delete_scans_tout))
+                            .route("/scans/today", actix_web::web::delete().to(routes::delete_scans_aujourd_hui))
+                            .route("/scans/previous", actix_web::web::delete().to(routes::delete_scans_precedents))
                             .route("/debug/log", actix_web::web::post().to(routes::post_log))
                             .route("/debug/logs", actix_web::web::get().to(routes::get_logs))
                             .route("/debug/logs", actix_web::web::delete().to(routes::delete_logs));

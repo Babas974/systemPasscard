@@ -41,7 +41,6 @@ type Toast = { id: number; contenu: string; date: string };
 
 const TAILLE_PAGE = 50;
 const CLE_THEME = "theme";
-const CLE_PAGE = "page";
 
 const historiqueLogs: { message: string; niveau: Niveau; timestamp: number }[] = [];
 let logsDerniereSeconde = 0;
@@ -366,10 +365,7 @@ export default function App() {
   const [nbTotal, setNbTotal] = useState(0);
   const [recherche, setRecherche] = useState("");
   const [rechercheEnvoyee, setRechercheEnvoyee] = useState("");
-  const [page, setPage] = useState(() => {
-    const p = parseInt(localStorage.getItem(CLE_PAGE) || "1", 10);
-    return Number.isFinite(p) && p > 0 ? p : 1;
-  });
+  const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [modalSuppression, setModalSuppression] = useState(false);
   const [selection, setSelection] = useState<PredicatSuppression>("aujourd-hui");
@@ -406,10 +402,7 @@ export default function App() {
     setDebugSecret((d) => !d);
   }, [lastTapTime]);
 
-  // Persistance de la page
-  useEffect(() => {
-    localStorage.setItem(CLE_PAGE, String(page));
-  }, [page]);
+
 
   // Permission notifications natives
   useEffect(() => {
