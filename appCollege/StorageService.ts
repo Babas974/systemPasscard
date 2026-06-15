@@ -12,6 +12,7 @@ const KEYS = {
   PORT: '@appCollege/port',
   QUEUE: '@appCollege/queue',
   HISTORY: '@appCollege/history',
+  LOGS: '@appCollege/logs',
 };
 
 export const DEFAULT_IP = '';
@@ -246,4 +247,33 @@ export const savePort = async (port: number): Promise<void> => {
     storageBroken = true;
     logError('Storage', 'savePort a echoue, fallback memoire', e).catch(() => {});
   }
+};
+
+// --- Logs persistes ---
+
+export interface LogEntryPersist {
+  source: string;
+  niveau: string;
+  message: string;
+  timestamp: number;
+  envoye: boolean;
+}
+
+export const loadLogs = async (): Promise<LogEntryPersist[]> => {
+  const AS = getAsyncStorage();
+  if (!AS) return [];
+  try {
+    const raw = await AS.getItem(KEYS.LOGS);
+    return safeParse<LogEntryPersist[]>(raw, []);
+  } catch {
+    return [];
+  }
+};
+
+export const saveLogs = async (logs: LogEntryPersist[]): Promise<void> => {
+  const AS = getAsyncStorage();
+  if (!AS) return;
+  try {
+    await AS.setItem(KEYS.LOGS, JSON.stringify(logs.slice(0, 500)));
+  } catch {}
 };

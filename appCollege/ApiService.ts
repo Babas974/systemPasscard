@@ -37,8 +37,15 @@ const loadSavedConfig = async (): Promise<void> => {
   } catch {}
 };
 
-// Init au chargement du module
-loadSavedConfig();
+const configReady: Promise<void> = loadSavedConfig().catch(() => {});
+
+// Attendre que le config soit charge (max 500ms) avant la 1ere requete
+const attendreConfig = (): Promise<void> => {
+  return Promise.race([
+    configReady,
+    new Promise<void>((r) => setTimeout(r, 500)),
+  ]);
+};
 
 export const onConnectionChange = (cb: (connecte: boolean) => void) => {
   listeners.push(cb);
@@ -174,6 +181,9 @@ const persistDiscovered = async (ip: string, port: number): Promise<void> => {
 
 // Resolution de l'URL active
 export const resolveBaseUrl = async (): Promise<string> => {
+  // Attendre le chargement du config sauvegarde (max 500ms)
+  await attendreConfig();
+
   // 1. Si on a une IP connue, la tester d'abord
   if (currentBaseUrl) {
     const ip = extractIP(currentBaseUrl);

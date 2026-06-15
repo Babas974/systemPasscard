@@ -1,11 +1,12 @@
 // Logger.ts
 // Service de logs avec stockage local + envoi HTTP au PC.
-// - Stockage local : les logs survivent a la deconnexion
+// - Stockage local : les logs survivent a la deconnexion et au restart
 // - Envoi HTTP : flush periodique vers POST /debug/log
 // - FATAL/ERROR : flush immediat
 // - Buffer local accessible pour la console debug
 
 import { getApiBaseUrl, isConnecte } from './ApiService';
+import { loadLogs, saveLogs, LogEntryPersist } from './StorageService';
 
 export type NiveauLog = 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 
@@ -18,7 +19,7 @@ interface LogEntry {
 }
 
 // Buffer local des logs (max 500)
-const logsLocaux: LogEntry[] = [];
+let logsLocaux: LogEntry[] = [];
 const MAX_LOGS_LOCAUX = 500;
 
 // Queue d'envoi au PC
@@ -28,13 +29,45 @@ const MAX_QUEUE = 200;
 let flushInterval: ReturnType<typeof setInterval> | null = null;
 let flushEnCours = false;
 
-// --- Stockage local ---
+// --- Stockage local (AsyncStorage via StorageService) ---
+
+// Charger les logs au demarrage (non-bloquant)
+let logsCharges = false;
+loadLogs().then((saved) => {
+  if (saved.length > 0) {
+    logsLocaux = saved.map((l) => ({
+      source: l.source,
+      niveau: l.niveau as NiveauLog,
+      message: l.message,
+      timestamp: l.timestamp,
+      envoye: l.envoye,
+    }));
+  }
+  logsCharges = true;
+}).catch(() => { logsCharges = true; });
+
+// Persister en arriere-plan (debounce 2s)
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+function persisterLogs(): void {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    const aSauvegarder: LogEntryPersist[] = logsLocaux.map((l) => ({
+      source: l.source,
+      niveau: l.niveau,
+      message: l.message,
+      timestamp: l.timestamp,
+      envoye: l.envoye,
+    }));
+    saveLogs(aSauvegarder).catch(() => {});
+  }, 2000);
+}
 
 function ajouterLogLocal(entry: LogEntry): void {
   logsLocaux.unshift(entry);
   if (logsLocaux.length > MAX_LOGS_LOCAUX) {
     logsLocaux.pop();
   }
+  persisterLogs();
 }
 
 export function getLogsLocaux(limit: number = 100): LogEntry[] {
