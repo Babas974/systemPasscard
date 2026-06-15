@@ -172,11 +172,10 @@ fn main() {
         8389
     };
 
-    // Dossier des logs
-    let log_dir = dirs::data_dir()
-        .unwrap_or_default()
-        .join("appcollege")
-        .join("logs");
+    // Dossier des logs — sur le bureau pour visibilite
+    let log_dir = dirs::desktop_dir()
+        .unwrap_or_else(|| dirs::data_dir().unwrap_or_default())
+        .join("appcollege-logs");
     let _ = std::fs::create_dir_all(&log_dir);
 
     fn build_emitter(app: AppHandle) -> db::ScanEmitter {

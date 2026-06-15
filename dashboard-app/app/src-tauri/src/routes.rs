@@ -248,14 +248,18 @@ pub async fn post_log(
         }));
     }
 
-    // Error/Fatal/Warn/Debug : ecrire dans le fichier date
-    ecrire_log_fichier(&data.log_dir, &niveau, source, message, &date_heure);
-
-    // Error/Fatal : inserer dans la DB (pour affichage permanent)
-    let log_id = if niveau == "error" || niveau == "fatal" {
+    // Error/Fatal uniquement : ecrire dans le fichier date + DB
+    if niveau == "error" || niveau == "fatal" {
+        ecrire_log_fichier(&data.log_dir, &niveau, source, message, &date_heure);
         match data.db.lock() {
             Ok(conn) => match db::inserer_log(&conn, source, &niveau, message, &date_heure) {
-                Ok(id) => id,
+                Ok(id) => {
+                    (data.log_emitter)(id, source, &niveau, message, &date_heure);
+                    return HttpResponse::Ok().json(serde_json::json!({
+                        "statut": "ok",
+                        "id": id
+                    }));
+                }
                 Err(e) => {
                     return HttpResponse::InternalServerError().json(serde_json::json!({
                         "erreur": e.to_string()
@@ -268,17 +272,15 @@ pub async fn post_log(
                 }));
             }
         }
-    } else {
-        // Warn/Debug : id temporaire pour l'event Tauri
-        chrono::Utc::now().timestamp_millis()
-    };
+    }
 
-    // Emettre via Tauri event (temps reel dans l'UI)
-    (data.log_emitter)(log_id, source, &niveau, message, &date_heure);
+    // Warn/Debug : event Tauri uniquement (pas de fichier, pas de DB)
+    let temp_id = chrono::Utc::now().timestamp_millis();
+    (data.log_emitter)(temp_id, source, &niveau, message, &date_heure);
 
     HttpResponse::Ok().json(serde_json::json!({
         "statut": "ok",
-        "id": log_id
+        "id": temp_id
     }))
 }
 
