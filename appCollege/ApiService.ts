@@ -257,7 +257,7 @@ export const envoyerScan = async (contenu: string): Promise<ScanResult> => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contenu }),
+          body: JSON.stringify({ contenu, date_heure: new Date().toISOString() }),
         },
         REQUEST_TIMEOUT_MS,
       );

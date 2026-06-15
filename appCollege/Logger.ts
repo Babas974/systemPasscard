@@ -64,7 +64,12 @@ async function envoyerLog(
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source, niveau, message }),
+      body: JSON.stringify({
+        source,
+        niveau,
+        message,
+        date_heure: new Date().toISOString(),
+      }),
       signal: controller.signal,
     });
     clearTimeout(timer);

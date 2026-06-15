@@ -20,6 +20,7 @@ pub struct HttpState {
 #[derive(Deserialize)]
 pub struct ScanRequest {
     pub contenu: String,
+    pub date_heure: Option<String>,
 }
 
 pub async fn post_scan(
@@ -33,7 +34,7 @@ pub async fn post_scan(
         }));
     }
 
-    let date_heure = db::date_heure_maintenant();
+    let date_heure = body.date_heure.clone().unwrap_or_else(|| db::date_heure_maintenant());
 
     let inserted_id = match data.db.lock() {
         Ok(conn) => match db::inserer_scan(&conn, &contenu, &date_heure) {
@@ -168,20 +169,25 @@ pub struct LogRequest {
     pub source: String,
     pub niveau: Option<String>,
     pub message: String,
+    pub date_heure: Option<String>,
     pub envoyer_a_tous: Option<bool>,
 }
 
-/// Ajouter un log au fichier date du jour
-fn ecrire_log_fichier(log_dir: &std::path::Path, niveau: &str, source: &str, message: &str) {
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+/// Ajouter un log au fichier date du jour (date du jour = date de la tablette)
+fn ecrire_log_fichier(log_dir: &std::path::Path, niveau: &str, source: &str, message: &str, date_heure: &str) {
+    // Extraire la date du jour depuis le timestamp tablette
+    let today = if date_heure.len() >= 10 {
+        date_heure[..10].to_string()
+    } else {
+        chrono::Local::now().format("%Y-%m-%d").to_string()
+    };
     let chemin = log_dir.join(format!("logs-{}.log", today));
     if let Ok(mut file) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(chemin)
     {
-        let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string();
-        let _ = writeln!(file, "[{}] [{}] [{}] {}", ts, niveau.to_uppercase(), source, message);
+        let _ = writeln!(file, "[{}] [{}] [{}] {}", date_heure, niveau.to_uppercase(), source, message);
     }
 }
 
@@ -228,6 +234,9 @@ pub async fn post_log(
         .unwrap_or("info")
         .to_lowercase();
 
+    // Utiliser l'heure de la tablette si fournie, sinon celle du serveur
+    let date_heure = body.date_heure.clone().unwrap_or_else(|| db::date_heure_maintenant_ms());
+
     // Info : on emet en temps reel uniquement (pas de fichier, pas de DB)
     if niveau == "info" {
         let fake_id = chrono::Utc::now().timestamp_millis();
@@ -240,10 +249,9 @@ pub async fn post_log(
     }
 
     // Error/Fatal/Warn/Debug : ecrire dans le fichier date
-    ecrire_log_fichier(&data.log_dir, &niveau, source, message);
+    ecrire_log_fichier(&data.log_dir, &niveau, source, message, &date_heure);
 
     // Error/Fatal : inserer dans la DB (pour affichage permanent)
-    let date_heure = db::date_heure_maintenant_ms();
     let log_id = if niveau == "error" || niveau == "fatal" {
         match data.db.lock() {
             Ok(conn) => match db::inserer_log(&conn, source, &niveau, message, &date_heure) {
