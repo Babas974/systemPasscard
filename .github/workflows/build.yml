@@ -13,12 +13,41 @@ env:
 
 jobs:
   # =========================================================================
-  # ÉTAPE 1 : VALIDER LE CODE (Rapide et léger)
+  # DETECTER LES CHANGEMENTS
   # =========================================================================
+  changes:
+    name: Detecter les changements
+    runs-on: ubuntu-22.04
+    outputs:
+      android: ${{ steps.filter.outputs.android }}
+      desktop: ${{ steps.filter.outputs.desktop }}
+      rust: ${{ steps.filter.outputs.rust }}
+      react: ${{ steps.filter.outputs.react }}
+    steps:
+      - uses: actions/checkout@v6
 
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            android:
+              - 'appCollege/**'
+            desktop:
+              - 'dashboard-app/**'
+            rust:
+              - 'dashboard-app/app/src-tauri/**'
+            react:
+              - 'dashboard-app/app/src/**'
+              - 'dashboard-app/app/package.json'
+
+  # =========================================================================
+  # TESTS (seulement si concerne)
+  # =========================================================================
   rust-tests:
     name: Tests Rust
     runs-on: ubuntu-22.04
+    needs: [changes]
+    if: needs.changes.outputs.rust == 'true'
     steps:
       - uses: actions/checkout@v6
 
@@ -48,6 +77,8 @@ jobs:
   react-tests:
     name: Tests React (Vitest)
     runs-on: ubuntu-22.04
+    needs: [changes]
+    if: needs.changes.outputs.react == 'true'
     steps:
       - uses: actions/checkout@v6
 
@@ -72,13 +103,17 @@ jobs:
         run: pnpm test
 
   # =========================================================================
-  # ÉTAPE 2 : COMPILATION DES COMPOSANTS (Se lance si l'étape 1 est OK)
+  # BUILDS (conditionnes par les changements + les tests)
   # =========================================================================
-
   android:
     name: Build Android
     runs-on: ubuntu-22.04
-    needs: [rust-tests, react-tests] # <--- Bloque le build si les tests échouent
+    needs: [changes, rust-tests, react-tests]
+    if: |
+      always() &&
+      needs.changes.outputs.android == 'true' &&
+      (needs.rust-tests.result == 'success' || needs.rust-tests.result == 'skipped') &&
+      (needs.react-tests.result == 'success' || needs.react-tests.result == 'skipped')
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
@@ -120,7 +155,12 @@ jobs:
   tauri-linux:
     name: Build Tauri (Linux)
     runs-on: ubuntu-22.04
-    needs: [rust-tests, react-tests] # <--- Bloque le build si les tests échouent
+    needs: [changes, rust-tests, react-tests]
+    if: |
+      always() &&
+      needs.changes.outputs.desktop == 'true' &&
+      (needs.rust-tests.result == 'success' || needs.rust-tests.result == 'skipped') &&
+      (needs.react-tests.result == 'success' || needs.react-tests.result == 'skipped')
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
@@ -180,7 +220,12 @@ jobs:
   tauri-windows:
     name: Build Tauri (Windows)
     runs-on: windows-2025-vs2026
-    needs: [rust-tests, react-tests] # <--- Bloque le build si les tests échouent
+    needs: [changes, rust-tests, react-tests]
+    if: |
+      always() &&
+      needs.changes.outputs.desktop == 'true' &&
+      (needs.rust-tests.result == 'success' || needs.rust-tests.result == 'skipped') &&
+      (needs.react-tests.result == 'success' || needs.react-tests.result == 'skipped')
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
