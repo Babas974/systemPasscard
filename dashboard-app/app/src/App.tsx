@@ -16,24 +16,6 @@ interface Scan {
   date_heure: string;
 }
 
-interface StatsJour {
-  date: string;
-  nombre: number;
-}
-
-interface StatsContenu {
-  contenu: string;
-  nombre: number;
-}
-
-interface Statistiques {
-  par_jour: StatsJour[];
-  top_contenus: StatsContenu[];
-  heure_pointe: number | null;
-  heure_pointe_nombre: number;
-  total: number;
-}
-
 type Theme = "sombre" | "clair";
 type Niveau = "info" | "data" | "warn" | "error";
 type PredicatSuppression = "aujourd-hui" | "jours-precedents" | "tout";
@@ -385,11 +367,6 @@ function formaterDate(dateStr: string) {
   };
 }
 
-function formaterDateCourte(dateStr: string) {
-  const d = new Date(dateStr);
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
 export default function App() {
   const [scans, setScans] = useState<Scan[]>([]);
   const [nbAjd, setNbAjd] = useState(0);
@@ -397,14 +374,12 @@ export default function App() {
   const [recherche, setRecherche] = useState("");
   const [rechercheEnvoyee, setRechercheEnvoyee] = useState("");
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const [modalSuppression, setModalSuppression] = useState(false);
   const [selection, setSelection] = useState<PredicatSuppression>("aujourd-hui");
   const [nbAffectes, setNbAffectes] = useState<number | null>(null);
   const [comptageEnCours, setComptageEnCours] = useState(false);
   const [suppressionEnCours, setSuppressionEnCours] = useState(false);
   const [suppressionIdEnCours, setSuppressionIdEnCours] = useState<number | null>(null);
-  const [stats, setStats] = useState<Statistiques | null>(null);
   const [debugOuvert, setDebugOuvert] = useState(false);
   const [configOuvert, setConfigOuvert] = useState(false);
   const [logs, setLogs] = useState("");
@@ -475,19 +450,14 @@ export default function App() {
 
   const charger = useCallback(async () => {
     try {
-      const [s, ca, ct, st] = await Promise.all([
+      const [s, ca, ct] = await Promise.all([
         invoke<Scan[]>("lister_scans_pagines", { page, taille: TAILLE_PAGE, recherche: rechercheEnvoyee || null }),
         invoke<number>("compter_aujourd_hui"),
         invoke<number>("compter_total"),
-        invoke<Statistiques>("obtenir_statistiques"),
       ]);
       setScans(s);
       setNbAjd(ca);
       setNbTotal(ct);
-      setStats(st);
-      const nouveauTotal = rechercheEnvoyee ? s.length : ct;
-      const pages = Math.max(1, Math.ceil(nouveauTotal / TAILLE_PAGE));
-      setTotalPages(pages);
       // Mémoriser les IDs connus pour détecter les nouveaux scans
       derniersIds.current = new Set(s.map(sc => sc.id));
     } catch (e) {
@@ -627,22 +597,11 @@ export default function App() {
     "tout": "Tout supprimer",
   }), []);
 
-  const maxJour = useMemo(() => stats ? Math.max(1, ...stats.par_jour.map(j => j.nombre)) : 1, [stats]);
-
   const conteneurStyle: React.CSSProperties = {
     ...styles.conteneur,
     backgroundColor: "var(--fond)",
     color: "var(--texte)",
   };
-
-  const plageTexte = useMemo(() => {
-    if (scans.length === 0) return "0";
-    const debut = (page - 1) * TAILLE_PAGE + 1;
-    const fin = debut + scans.length - 1;
-    const total = rechercheEnvoyee ? scans.length : nbTotal;
-    if (rechercheEnvoyee) return `${debut}–${fin} (filtré)`;
-    return `${debut}–${fin} / ${total}`;
-  }, [page, scans.length, nbTotal, rechercheEnvoyee]);
 
   return (
     <div style={conteneurStyle}>
@@ -680,29 +639,6 @@ export default function App() {
           <div style={styles.libelle}>Total</div>
         </div>
       </div>
-
-      {/* Statistiques */}
-      {stats && (
-        <div style={styles.statsSection}>
-          <div style={styles.statsCarte}>
-            <div style={styles.statsTitre}>Scans — 7 derniers jours</div>
-            {stats.par_jour.map((j) => (
-              <div key={j.date} style={styles.statsBarreLigne}>
-                <span style={styles.statsBarreLabel}>{formaterDateCourte(j.date)}</span>
-                <span style={styles.statsBarreTrack}>
-                  <span
-                    style={{
-                      ...styles.statsBarreRemplie,
-                      width: `${Math.round((j.nombre / maxJour) * 100)}%`,
-                    }}
-                  />
-                </span>
-                <span style={styles.statsBarreValeur}>{j.nombre}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Actions */}
       <div style={styles.actions}>
@@ -764,35 +700,6 @@ export default function App() {
             )}
           </tbody>
         </table>
-      </div>
-
-      {/* Pagination */}
-      <div style={styles.pagination}>
-        <span style={styles.paginationInfo}>
-          Page {page} / {totalPages} — {plageTexte}
-        </span>
-        <div style={{ display: "flex", gap: 6 }}>
-          <button
-            style={{ ...styles.btn, opacity: page <= 1 ? 0.5 : 1 }}
-            onClick={() => setPage(1)}
-            disabled={page <= 1}
-          >« Premier</button>
-          <button
-            style={{ ...styles.btn, opacity: page <= 1 ? 0.5 : 1 }}
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            disabled={page <= 1}
-          >‹ Précédent</button>
-          <button
-            style={{ ...styles.btn, opacity: page >= totalPages ? 0.5 : 1 }}
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-          >Suivant ›</button>
-          <button
-            style={{ ...styles.btn, opacity: page >= totalPages ? 0.5 : 1 }}
-            onClick={() => setPage(totalPages)}
-            disabled={page >= totalPages}
-          >Dernier »</button>
-        </div>
       </div>
 
       {/* Modal suppression */}
