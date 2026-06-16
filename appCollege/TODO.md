@@ -1,7 +1,7 @@
 # TODO - appCollege + dashboard-app
 
 ## Statut
-**En cours** — CI corrigée, build Android release OK, UX refonte 2 étapes OK, sécurité renforcée (ports adaptatifs, DB chiffrée, auth HTTP).
+**En cours** — CI corrigée, build Android release OK, UX refonte 2 étapes OK, sécurité renforcée (ports adaptatifs, DB chiffrée, auth HTTP), fix suppression desktop.
 
 ## Tâches réalisées
 - CI/CD : pnpm, build.yml, lint warnings
@@ -66,6 +66,7 @@
 ### Priorité HAUTE ✅
 - **Bug suppression données** : ✅ La suppression côté mobile synchronise avec le serveur via `/scans/all`
 - **Affichage après redémarrage** : ✅ L'app affiche "aujourd'hui" (page 1) à l'ouverture
+- **Fix suppression desktop** : ✅ Bouton disabled quand null/chargement, toasts d'erreur, garde interne, loading states
 
 ### Priorité MOYENNE
 - **CSP** : activer dans `tauri.conf.json`

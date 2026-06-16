@@ -38,6 +38,7 @@ type Theme = "sombre" | "clair";
 type Niveau = "info" | "data" | "warn" | "error";
 type PredicatSuppression = "aujourd-hui" | "jours-precedents" | "tout";
 type Toast = { id: number; contenu: string; date: string };
+type Notification = { id: number; message: string; type: 'succes' | 'erreur' };
 
 const TAILLE_PAGE = 50;
 const CLE_THEME = "theme";
@@ -251,6 +252,36 @@ const styles: Record<string, React.CSSProperties> = {
   },
   toastContenu: { fontSize: 13, fontWeight: 600, color: "var(--texte)" },
   toastDate: { fontSize: 11, color: "var(--texte-secondaire)", marginTop: 2 },
+  notificationsWrap: {
+    position: "fixed",
+    top: 16,
+    right: 16,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    zIndex: 300,
+    pointerEvents: "none",
+  },
+  notification: {
+    padding: "10px 14px",
+    borderRadius: 6,
+    minWidth: 200,
+    maxWidth: 320,
+    boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
+    pointerEvents: "auto",
+    fontSize: 13,
+    fontWeight: 600,
+  },
+  notificationSucces: {
+    backgroundColor: "#16a34a",
+    color: "#fff",
+    borderLeft: "3px solid #15803d",
+  },
+  notificationErreur: {
+    backgroundColor: "#dc2626",
+    color: "#fff",
+    borderLeft: "3px solid #b91c1c",
+  },
   debugBarre: {
     flexShrink: 0,
     backgroundColor: "var(--debug-fond)",
@@ -370,6 +401,9 @@ export default function App() {
   const [modalSuppression, setModalSuppression] = useState(false);
   const [selection, setSelection] = useState<PredicatSuppression>("aujourd-hui");
   const [nbAffectes, setNbAffectes] = useState<number | null>(null);
+  const [comptageEnCours, setComptageEnCours] = useState(false);
+  const [suppressionEnCours, setSuppressionEnCours] = useState(false);
+  const [suppressionIdEnCours, setSuppressionIdEnCours] = useState<number | null>(null);
   const [stats, setStats] = useState<Statistiques | null>(null);
   const [debugOuvert, setDebugOuvert] = useState(false);
   const [configOuvert, setConfigOuvert] = useState(false);
@@ -379,6 +413,7 @@ export default function App() {
     return stocke === "clair" || stocke === "sombre" ? stocke : "sombre";
   });
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [permissionNotif, setPermissionNotif] = useState<boolean | null>(null);
   const [debugSecret, setDebugSecret] = useState(false);
   const [lastTapTime, setLastTapTime] = useState(0);
@@ -428,6 +463,14 @@ export default function App() {
     window.setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 5000);
+  }, []);
+
+  const afficherNotification = useCallback((message: string, type: Notification['type'] = 'succes') => {
+    const id = prochaineToastId++;
+    setNotifications(prev => [...prev, { id, message, type }]);
+    window.setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 3000);
   }, []);
 
   const charger = useCallback(async () => {
@@ -505,39 +548,58 @@ export default function App() {
   useEffect(() => {
     if (!modalSuppression) {
       setNbAffectes(null);
+      setComptageEnCours(false);
       return;
     }
+    let annule = false;
     (async () => {
+      setComptageEnCours(true);
       try {
         const n = await invoke<number>("compter_avec_predicat", { predicat: selection });
-        setNbAffectes(n);
+        if (!annule) setNbAffectes(n);
       } catch (e) {
         log("error", "db", `Erreur comptage: ${e}`, setLogs);
-        setNbAffectes(null);
+        if (!annule) setNbAffectes(null);
+      } finally {
+        if (!annule) setComptageEnCours(false);
       }
     })();
+    return () => { annule = true; };
   }, [selection, modalSuppression]);
 
   const supprimerUn = async (id: number) => {
+    if (suppressionIdEnCours !== null) return;
     try {
+      setSuppressionIdEnCours(id);
       await invoke("supprimer_scan", { id });
       log("info", "db", `Scan #${id} supprime`, setLogs);
+      afficherNotification("Scan supprimé", "succes");
       await charger();
     } catch (e) {
       log("error", "db", `Erreur suppression: ${e}`, setLogs);
+      afficherNotification("Erreur lors de la suppression", "erreur");
+    } finally {
+      setSuppressionIdEnCours(null);
     }
   };
 
   const confirmerSuppression = async () => {
+    if (suppressionEnCours) return;
+    if (nbAffectes === null || nbAffectes === 0) return;
     try {
+      setSuppressionEnCours(true);
       if (selection === "tout") await invoke("supprimer_tout");
       else if (selection === "aujourd-hui") await invoke("supprimer_aujourd_hui");
       else if (selection === "jours-precedents") await invoke("supprimer_precedents");
-      log("info", "db", `Suppression: ${selection} (${nbAffectes ?? "?"} scans)`, setLogs);
+      log("info", "db", `Suppression: ${selection} (${nbAffectes} scans)`, setLogs);
+      afficherNotification(`${nbAffectes} scan(s) supprimé(s)`, "succes");
       setModalSuppression(false);
       await charger();
     } catch (e) {
       log("error", "db", `Erreur: ${e}`, setLogs);
+      afficherNotification("Erreur lors de la suppression", "erreur");
+    } finally {
+      setSuppressionEnCours(false);
     }
   };
 
@@ -688,8 +750,12 @@ export default function App() {
                     <td style={styles.td}>{date}</td>
                     <td style={styles.td}>{heure}</td>
                     <td style={styles.td}>
-                      <button style={styles.supprimerBtn} onClick={() => supprimerUn(s.id)}>
-                        Supprimer
+                      <button
+                        style={{...styles.supprimerBtn, opacity: suppressionIdEnCours === s.id ? 0.5 : 1}}
+                        onClick={() => supprimerUn(s.id)}
+                        disabled={suppressionIdEnCours !== null}
+                      >
+                        {suppressionIdEnCours === s.id ? "..." : "Supprimer"}
                       </button>
                     </td>
                   </tr>
@@ -750,7 +816,10 @@ export default function App() {
                   />
                   {libellesPredicats[v]}
                 </span>
-                {nbAffectes !== null && selection === v && (
+                {comptageEnCours && selection === v && (
+                  <span style={styles.badge}>...</span>
+                )}
+                {!comptageEnCours && nbAffectes !== null && selection === v && (
                   <span style={styles.badge}>{nbAffectes}</span>
                 )}
               </label>
@@ -760,9 +829,9 @@ export default function App() {
               <button
                 style={styles.btnDanger}
                 onClick={confirmerSuppression}
-                disabled={nbAffectes === 0}
+                disabled={nbAffectes === null || nbAffectes === 0 || suppressionEnCours}
               >
-                Supprimer {nbAffectes !== null ? `(${nbAffectes})` : ""}
+                {suppressionEnCours ? "Suppression..." : `Supprimer${nbAffectes !== null ? ` (${nbAffectes})` : ""}`}
               </button>
             </div>
           </div>
@@ -779,6 +848,21 @@ export default function App() {
           <div key={t.id} style={styles.toast}>
             <div style={styles.toastContenu}>📥 {t.contenu}</div>
             <div style={styles.toastDate}>{t.date}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Notifications de suppression */}
+      <div style={styles.notificationsWrap} aria-live="polite">
+        {notifications.map(n => (
+          <div
+            key={n.id}
+            style={{
+              ...styles.notification,
+              ...(n.type === 'succes' ? styles.notificationSucces : styles.notificationErreur),
+            }}
+          >
+            {n.type === 'succes' ? '✓' : '✕'} {n.message}
           </div>
         ))}
       </div>
