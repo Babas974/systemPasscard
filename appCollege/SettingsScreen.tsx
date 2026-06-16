@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from './theme';
 import { createStyles } from './styles';
-import { getApiBaseUrl } from './ApiService';
+import { getApiBaseUrl, formatLocalDateTime } from './ApiService';
 import { HistoryEntry, DeleteQueueEntry } from './StorageService';
 import { getLogsLocaux, getNbErreursLocales } from './Logger';
 
@@ -71,7 +71,7 @@ export default function SettingsScreen({
       source: l.source,
       niveau: l.niveau,
       message: l.message,
-      date_heure: new Date(l.timestamp).toISOString(),
+      date_heure: formatLocalDateTime(),
     }));
     setLogs(entries);
     setNbErreurs(getNbErreursLocales());

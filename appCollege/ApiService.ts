@@ -99,6 +99,12 @@ export interface ScanResult {
   erreur?: string;
 }
 
+export const formatLocalDateTime = (): string => {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
 const fetchWithTimeout = async (
   url: string,
   options: RequestInit,
@@ -267,7 +273,7 @@ export const envoyerScan = async (contenu: string): Promise<ScanResult> => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contenu, date_heure: new Date().toISOString() }),
+          body: JSON.stringify({ contenu, date_heure: formatLocalDateTime() }),
         },
         REQUEST_TIMEOUT_MS,
       );

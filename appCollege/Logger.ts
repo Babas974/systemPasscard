@@ -5,7 +5,7 @@
 // - FATAL/ERROR : flush immediat
 // - Buffer local accessible pour la console debug
 
-import { getApiBaseUrl, isConnecte } from './ApiService';
+import { getApiBaseUrl, isConnecte, formatLocalDateTime } from './ApiService';
 import { loadLogs, saveLogs, LogEntryPersist } from './StorageService';
 
 export type NiveauLog = 'debug' | 'info' | 'warn' | 'error' | 'fatal';
@@ -101,7 +101,7 @@ async function envoyerLog(
         source,
         niveau,
         message,
-        date_heure: new Date().toISOString(),
+        date_heure: formatLocalDateTime(),
       }),
       signal: controller.signal,
     });
