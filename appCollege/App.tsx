@@ -34,6 +34,7 @@ import {
   onConnectionChange,
   resetBackoff,
   supprimerToutServeur,
+  supprimerParType,
 } from './ApiService';
 import {
   loadIP,
@@ -43,9 +44,13 @@ import {
   saveHistory,
   clearHistory as clearHistoryStorage,
   clearQueue as clearQueueStorage,
+  loadDeleteQueue,
+  saveDeleteQueue,
+  clearDeleteQueue,
   generateId,
   HistoryEntry,
   QueueEntry,
+  DeleteQueueEntry,
 } from './StorageService';
 import {
   logInfo,
@@ -194,8 +199,10 @@ export function App() {
   const [historique, setHistorique] = useState<HistoryEntry[]>([]);
   const [toast, setToast] = useState<ToastState>({ visible: false, message: '', type: 'info' });
   const [latence, setLatence] = useState<number | null>(null);
+  const [fileSuppression, setFileSuppression] = useState<DeleteQueueEntry[]>([]);
 
   const traitementEnCours = useRef(false);
+  const traitementSuppressionEnCours = useRef(false);
   const validationEnCours = useRef(false);
   const tapCountRef = useRef(0);
   const lastTapTimeRef = useRef(0);
@@ -258,6 +265,30 @@ export function App() {
     }
   }, [file, mettreAJourHistorique]);
 
+  // --- File d'attente de suppression ---
+  const traiterFileSuppression = useCallback(async () => {
+    if (traitementSuppressionEnCours.current) return;
+    if (fileSuppression.length === 0) return;
+    const ok = await testerConnexion();
+    if (!ok) return;
+
+    traitementSuppressionEnCours.current = true;
+    try {
+      const entree = fileSuppression[0];
+      logInfo('App', `File suppression: tentative pour ${entree.type} (${fileSuppression.length} en attente)`).catch(() => {});
+      const succes = await supprimerParType(entree.type);
+      if (succes) {
+        setFileSuppression((prev) => prev.slice(1));
+        vibrerSucces();
+        logInfo('App', `File suppression: succes pour ${entree.type}, reste ${fileSuppression.length - 1} en attente`).catch(() => {});
+      } else {
+        logError('App', `File suppression: echec pour ${entree.type}, nouvelle tentative plus tard`).catch(() => {});
+      }
+    } finally {
+      traitementSuppressionEnCours.current = false;
+    }
+  }, [fileSuppression]);
+
   // --- Init ---
   useEffect(() => {
     const init = async () => {
@@ -270,9 +301,11 @@ export function App() {
         setIpPC(activeUrl);
         const q = await loadQueue();
         setFile(q);
+        const dq = await loadDeleteQueue();
+        setFileSuppression(dq);
         const h = await loadHistory();
         setHistorique(h);
-        logInfo('App', `Init OK (url=${activeUrl}, file=${q.length}, hist=${h.length})`);
+        logInfo('App', `Init OK (url=${activeUrl}, file=${q.length}, deleteQ=${dq.length}, hist=${h.length})`);
       } catch (e) {
         logFatal('App', 'Echec init au demarrage', e);
       }
@@ -313,12 +346,21 @@ export function App() {
     traiterFileRef.current = traiterFile;
   }, [traiterFile]);
 
+  const traiterFileSuppressionRef = useRef(traiterFileSuppression);
   useEffect(() => {
-    const interval = setInterval(() => traiterFileRef.current(), QUEUE_TRAITEMENT_MS);
+    traiterFileSuppressionRef.current = traiterFileSuppression;
+  }, [traiterFileSuppression]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      traiterFileRef.current();
+      traiterFileSuppressionRef.current();
+    }, QUEUE_TRAITEMENT_MS);
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => { saveQueue(file); }, [file]);
+  useEffect(() => { saveDeleteQueue(fileSuppression); }, [fileSuppression]);
   useEffect(() => { saveHistory(historique); }, [historique]);
 
   // --- Reconnexion foreground (apres veille) ---
@@ -345,6 +387,7 @@ export function App() {
           // Traiter la file meme si pas encore connecte (pour les envois recents)
           if (ok) {
             traiterFileRef.current();
+            traiterFileSuppressionRef.current();
           }
         }, 2000);
       }
@@ -424,12 +467,23 @@ export function App() {
         pcConnecte={pcConnecte}
         onClose={() => setScreen('main')}
         onViderHistorique={async () => {
+          logInfo('App', 'Demande de vidage historique').catch(() => {});
           setHistorique([]);
           await clearHistoryStorage();
-          await supprimerToutServeur();
+          logInfo('App', 'Historique local vide').catch(() => {});
+          const ok = await supprimerToutServeur();
+          if (ok) {
+            logInfo('App', 'Suppression serveur reussie').catch(() => {});
+          } else {
+            const entree: DeleteQueueEntry = { id: generateId(), type: 'tout', creeLe: Date.now() };
+            setFileSuppression((prev) => [...prev, entree]);
+            logError('App', 'Suppression serveur echouee, ajout en file d\'attente').catch(() => {});
+            afficherToast('PC injoignable. Suppression serveur en file d\'attente.', 'info');
+          }
         }}
         onTesterConnexion={testerConnexion}
         historique={historique}
+        fileSuppression={fileSuppression}
       />
     );
   }

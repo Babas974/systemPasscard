@@ -314,15 +314,51 @@ export const testerConnexion = async (): Promise<boolean> => {
 
 export const supprimerToutServeur = async (): Promise<boolean> => {
   const baseUrl = await resolveBaseUrl();
-  if (!baseUrl) return false;
+  if (!baseUrl) {
+    logError('ApiService', 'supprimerToutServeur: aucun serveur trouve').catch(() => {});
+    return false;
+  }
   try {
+    logInfo('ApiService', `DELETE ${baseUrl}/scans/all`).catch(() => {});
     const response = await fetchWithTimeout(
       `${baseUrl}/scans/all`,
       { method: 'DELETE' },
       REQUEST_TIMEOUT_MS,
     );
+    if (response.ok) {
+      logInfo('ApiService', 'supprimerToutServeur: succes').catch(() => {});
+    } else {
+      logError('ApiService', `supprimerToutServeur: echec HTTP ${response.status}`).catch(() => {});
+    }
     return response.ok;
-  } catch {
+  } catch (e) {
+    logError('ApiService', `supprimerToutServeur: exception ${e}`).catch(() => {});
+    return false;
+  }
+};
+
+export const supprimerParType = async (type: 'tout' | 'aujourd-hui' | 'precedents'): Promise<boolean> => {
+  const baseUrl = await resolveBaseUrl();
+  if (!baseUrl) {
+    logError('ApiService', `supprimerParType(${type}): aucun serveur trouve`).catch(() => {});
+    return false;
+  }
+  const endpoint = type === 'tout' ? '/scans/all' : type === 'aujourd-hui' ? '/scans/today' : '/scans/previous';
+  try {
+    logInfo('ApiService', `DELETE ${baseUrl}${endpoint}`).catch(() => {});
+    const response = await fetchWithTimeout(
+      `${baseUrl}${endpoint}`,
+      { method: 'DELETE' },
+      REQUEST_TIMEOUT_MS,
+    );
+    if (response.ok) {
+      logInfo('ApiService', `supprimerParType(${type}): succes`).catch(() => {});
+    } else {
+      logError('ApiService', `supprimerParType(${type}): echec HTTP ${response.status}`).catch(() => {});
+    }
+    return response.ok;
+  } catch (e) {
+    logError('ApiService', `supprimerParType(${type}): exception ${e}`).catch(() => {});
     return false;
   }
 };

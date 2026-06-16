@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from './theme';
 import { createStyles } from './styles';
 import { getApiBaseUrl } from './ApiService';
-import { HistoryEntry } from './StorageService';
+import { HistoryEntry, DeleteQueueEntry } from './StorageService';
 import { getLogsLocaux, getNbErreursLocales } from './Logger';
 
 interface Props {
@@ -26,6 +26,7 @@ interface Props {
   onViderHistorique: () => Promise<void>;
   onTesterConnexion: () => Promise<boolean>;
   historique?: HistoryEntry[];
+  fileSuppression?: DeleteQueueEntry[];
 }
 
 interface LogEntry {
@@ -53,6 +54,7 @@ export default function SettingsScreen({
   onViderHistorique,
   onTesterConnexion,
   historique = [],
+  fileSuppression = [],
 }: Props) {
   const styles = createStyles(theme);
   const [testEnCours, setTestEnCours] = useState(false);
@@ -204,6 +206,11 @@ export default function SettingsScreen({
         >
           <Text style={styles.settingsBoutonTexte}>Vider l'historique</Text>
         </TouchableOpacity>
+        {fileSuppression.length > 0 && (
+          <Text style={[styles.settingsResultat, { color: theme.warning }]}>
+            {fileSuppression.length} suppression(s) en attente sur le serveur
+          </Text>
+        )}
 
         {/* Historique des eleves */}
         <View style={styles.settingsHistorique}>

@@ -13,6 +13,7 @@ const KEYS = {
   QUEUE: '@appCollege/queue',
   HISTORY: '@appCollege/history',
   LOGS: '@appCollege/logs',
+  DELETE_QUEUE: '@appCollege/deleteQueue',
 };
 
 export const DEFAULT_IP = '';
@@ -30,10 +31,17 @@ export interface HistoryEntry extends QueueEntry {
   erreur?: string;
 }
 
+export interface DeleteQueueEntry {
+  id: string;
+  type: 'tout' | 'aujourd-hui' | 'precedents';
+  creeLe: number;
+}
+
 const inMemoryFallback: {
   ip?: string;
   queue?: QueueEntry[];
   history?: HistoryEntry[];
+  deleteQueue?: DeleteQueueEntry[];
 } = {};
 
 let storageBroken = false;
@@ -202,6 +210,54 @@ export const clearQueue = async (): Promise<void> => {
   } catch (e) {
     storageBroken = true;
     logError('Storage', 'clearQueue a echoue', e).catch(() => {});
+  }
+};
+
+export const loadDeleteQueue = async (): Promise<DeleteQueueEntry[]> => {
+  const AS = getAsyncStorage();
+  if (!AS) {
+    warnOnce();
+    return inMemoryFallback.deleteQueue ?? [];
+  }
+  try {
+    const raw = await AS.getItem(KEYS.DELETE_QUEUE);
+    const parsed = safeParse<DeleteQueueEntry[]>(raw, []);
+    inMemoryFallback.deleteQueue = parsed;
+    return parsed;
+  } catch (e) {
+    storageBroken = true;
+    logError('Storage', 'loadDeleteQueue a echoue, fallback memoire', e).catch(() => {});
+    return inMemoryFallback.deleteQueue ?? [];
+  }
+};
+
+export const saveDeleteQueue = async (queue: DeleteQueueEntry[]): Promise<void> => {
+  inMemoryFallback.deleteQueue = queue;
+  const AS = getAsyncStorage();
+  if (!AS) {
+    warnOnce();
+    return;
+  }
+  try {
+    await AS.setItem(KEYS.DELETE_QUEUE, JSON.stringify(queue));
+  } catch (e) {
+    storageBroken = true;
+    logError('Storage', 'saveDeleteQueue a echoue, fallback memoire', e).catch(() => {});
+  }
+};
+
+export const clearDeleteQueue = async (): Promise<void> => {
+  inMemoryFallback.deleteQueue = [];
+  const AS = getAsyncStorage();
+  if (!AS) {
+    warnOnce();
+    return;
+  }
+  try {
+    await AS.removeItem(KEYS.DELETE_QUEUE);
+  } catch (e) {
+    storageBroken = true;
+    logError('Storage', 'clearDeleteQueue a echoue', e).catch(() => {});
   }
 };
 
