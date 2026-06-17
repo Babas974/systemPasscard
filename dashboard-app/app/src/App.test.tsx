@@ -22,14 +22,6 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
 
-const STATS_VIDES = {
-  par_jour: [],
-  top_contenus: [],
-  heure_pointe: null,
-  heure_pointe_nombre: 0,
-  total: 0,
-};
-
 type Handlers = Record<string, unknown>;
 
 function mockInvoke(handlers: Handlers = {}) {
@@ -37,7 +29,6 @@ function mockInvoke(handlers: Handlers = {}) {
     lister_scans_pagines: [],
     compter_aujourd_hui: 0,
     compter_total: 0,
-    obtenir_statistiques: STATS_VIDES,
     compter_avec_predicat: 0,
     exporter_csv: "/tmp/scans.csv",
   };
@@ -106,14 +97,13 @@ describe("App - compteurs", () => {
     expect(await screen.findByText("42")).toBeInTheDocument();
   });
 
-  it("appelle compter_aujourd_hui, compter_total et obtenir_statistiques au chargement", async () => {
+  it("appelle lister_scans_pagines, compter_aujourd_hui et compter_total au chargement", async () => {
     mockInvoke();
     render(<App />);
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("lister_scans_pagines", expect.any(Object));
       expect(invoke).toHaveBeenCalledWith("compter_aujourd_hui");
       expect(invoke).toHaveBeenCalledWith("compter_total");
-      expect(invoke).toHaveBeenCalledWith("obtenir_statistiques");
     });
   });
 });
