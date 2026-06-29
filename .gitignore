@@ -13,3 +13,5 @@ dist/
 *.db
 tous_les_logs.txt
 logs_app.txt\ntous_les_logs_nouveaux.txt
+logs_app.txt
+tous_les_logs_nouveaux.txt

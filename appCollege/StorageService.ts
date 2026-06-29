@@ -133,6 +133,7 @@ export const loadQueue = async (): Promise<QueueEntry[]> => {
 
 export const saveQueue = async (queue: QueueEntry[]): Promise<void> => {
   inMemoryFallback.queue = queue;
+  if (storageBroken) return;
   const AS = getAsyncStorage();
   if (!AS) {
     warnOnce();
@@ -327,9 +328,12 @@ export const loadLogs = async (): Promise<LogEntryPersist[]> => {
 };
 
 export const saveLogs = async (logs: LogEntryPersist[]): Promise<void> => {
+  if (storageBroken) return;
   const AS = getAsyncStorage();
   if (!AS) return;
   try {
     await AS.setItem(KEYS.LOGS, JSON.stringify(logs.slice(0, 500)));
-  } catch {}
+  } catch {
+    storageBroken = true;
+  }
 };

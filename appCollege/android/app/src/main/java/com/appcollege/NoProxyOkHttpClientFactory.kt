@@ -4,7 +4,8 @@ import com.facebook.react.modules.network.OkHttpClientFactory
 import com.facebook.react.modules.network.OkHttpClientProvider
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
-import java.net.InetSocketAddress
+import okhttp3.CookieJar
+import okhttp3.HttpUrl
 import java.net.Proxy
 import java.net.URI
 import java.util.concurrent.TimeUnit
@@ -18,6 +19,7 @@ class NoProxyOkHttpClientFactory : OkHttpClientFactory {
             .retryOnConnectionFailure(true)
             .protocols(listOf(Protocol.HTTP_1_1, Protocol.HTTP_2))
             .proxy(Proxy.NO_PROXY)
+            .cookieJar(CookieJar.NO_COOKIES)
 
         baseBuilder.proxySelector(object : java.net.ProxySelector() {
             override fun select(uri: URI): List<Proxy> {
@@ -33,12 +35,10 @@ class NoProxyOkHttpClientFactory : OkHttpClientFactory {
             }
 
             override fun connectFailed(uri: URI?, sa: java.net.SocketAddress?, ioe: java.io.IOException?) {
-                // Ignorer les erreurs de connexion locale
             }
 
             private fun isLocalAddress(host: String): Boolean {
                 if (host == "localhost" || host == "127.0.0.1" || host == "::1") return true
-                // Bypass pour tout le subnet local
                 if (host.startsWith("192.168.")) return true
                 if (host.startsWith("10.")) return true
                 if (host.startsWith("172.")) {
