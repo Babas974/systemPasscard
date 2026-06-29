@@ -1,7 +1,6 @@
 package com.appcollege
 
-import com.facebook.react.okhttp.OkHttpClientFactory
-import com.facebook.react.okhttp.OkHttpClientProvider
+import com.facebook.react.modules.network.OkHttpClientFactory
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import java.net.Proxy
@@ -9,8 +8,7 @@ import java.util.concurrent.TimeUnit
 
 class NoProxyOkHttpClientFactory : OkHttpClientFactory {
     override fun createNewNetworkModuleClient(): OkHttpClient {
-        val client = OkHttpClientProvider.createClient()
-        val baseBuilder = client.newBuilder()
+        val baseBuilder = OkHttpClient.Builder()
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -31,7 +29,6 @@ class NoProxyOkHttpClientFactory : OkHttpClientFactory {
             }
 
             override fun connectFailed(uri: java.net.URI?, sa: java.net.SocketAddress?, ioe: java.io.IOException?) {
-                // Silencieux pour les IPs locales
                 if (uri != null && isLocalAddress(uri.host ?: "")) {
                     return
                 }
@@ -40,7 +37,6 @@ class NoProxyOkHttpClientFactory : OkHttpClientFactory {
             private fun isLocalAddress(host: String): Boolean {
                 if (host == "localhost" || host == "127.0.0.1" || host == "::1") return true
                 if (!host.matches(Regex("^192\\.168\\..*"))) return false
-                // Exclure le proxy du collège et le DNS
                 if (host == "192.168.224.1") return false
                 return true
             }

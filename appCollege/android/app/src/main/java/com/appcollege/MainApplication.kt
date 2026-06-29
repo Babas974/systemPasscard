@@ -8,7 +8,7 @@ import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.okhttp.OkHttpClientProvider
+import com.facebook.react.modules.network.OkHttpClientProvider
 import com.facebook.react.uimanager.ViewManager
 
 class MainApplication : Application(), ReactApplication {
