@@ -11,3 +11,4 @@ dist/
 
 # SQLite databases
 *.db
+tous_les_logs.txt
