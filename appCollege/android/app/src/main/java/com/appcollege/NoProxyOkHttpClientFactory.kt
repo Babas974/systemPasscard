@@ -1,6 +1,7 @@
 package com.appcollege
 
 import com.facebook.react.modules.network.OkHttpClientFactory
+import com.facebook.react.modules.network.OkHttpClientProvider
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import java.net.Proxy
@@ -8,7 +9,7 @@ import java.util.concurrent.TimeUnit
 
 class NoProxyOkHttpClientFactory : OkHttpClientFactory {
     override fun createNewNetworkModuleClient(): OkHttpClient {
-        val baseBuilder = OkHttpClient.Builder()
+        val baseBuilder = OkHttpClientProvider.createClientBuilder()
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .connectTimeout(15, TimeUnit.SECONDS)
