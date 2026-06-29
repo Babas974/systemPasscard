@@ -19,6 +19,10 @@ let currentBaseUrl: string = '';
 let discoveryEnCours = false;
 let deviceIP: string | null = null;
 
+// Cache: dernier succes de decouverte (timestamp ms)
+let lastSuccessAt = 0;
+const SUCCESS_CACHE_MS = 5000;
+
 // Etat de reconnexion
 let connecte = false;
 let tentativeEchecs = 0;
@@ -222,6 +226,7 @@ const persistDiscovered = async (ip: string, port: number): Promise<void> => {
   deviceIP = ip;
   connecte = true;
   tentativeEchecs = 0;
+  lastSuccessAt = Date.now();
   notifyListeners();
   await Promise.all([saveIP(ip), savePort(port)]);
 };
@@ -230,6 +235,11 @@ const persistDiscovered = async (ip: string, port: number): Promise<void> => {
 export const resolveBaseUrl = async (): Promise<string> => {
   // Attendre le chargement du config sauvegarde (max 500ms)
   await attendreConfig();
+
+  // Cache: si on a un succes recent (< 5s), retourner sans re-pinger
+  if (currentBaseUrl && connecte && (Date.now() - lastSuccessAt) < SUCCESS_CACHE_MS) {
+    return currentBaseUrl;
+  }
 
   // 1. Si on a une IP connue, la tester d'abord
   if (currentBaseUrl) {

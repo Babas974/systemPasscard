@@ -204,6 +204,7 @@ export function App() {
   const traitementEnCours = useRef(false);
   const traitementSuppressionEnCours = useRef(false);
   const validationEnCours = useRef(false);
+  const initDone = useRef(false);
   const tapCountRef = useRef(0);
   const lastTapTimeRef = useRef(0);
 
@@ -308,6 +309,8 @@ export function App() {
         logInfo('App', `Init OK (url=${activeUrl}, file=${q.length}, deleteQ=${dq.length}, hist=${h.length})`);
       } catch (e) {
         logFatal('App', 'Echec init au demarrage', e);
+      } finally {
+        initDone.current = true;
       }
     };
     init();
@@ -320,6 +323,11 @@ export function App() {
 
     const check = async () => {
       if (!actif) return;
+      // Attendre que l'init soit terminee
+      if (!initDone.current) {
+        if (actif) timer = setTimeout(check, 500);
+        return;
+      }
       const start = Date.now();
       const activeUrl = await resolveBaseUrl();
       setIpPC(activeUrl);
@@ -353,8 +361,10 @@ export function App() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      traiterFileRef.current();
-      traiterFileSuppressionRef.current();
+      if (initDone.current) {
+        traiterFileRef.current();
+        traiterFileSuppressionRef.current();
+      }
     }, QUEUE_TRAITEMENT_MS);
     return () => clearInterval(interval);
   }, []);
@@ -369,6 +379,8 @@ export function App() {
 
     const handleAppStateChange = (next: AppStateStatus) => {
       if (next === 'active') {
+        // Ignorer le premier event active pendant l'init
+        if (!initDone.current) return;
         logInfo('App', 'Retour en foreground — reset backoff + reconnexion');
         // Reset immediat du backoff
         resetBackoff();
