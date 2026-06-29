@@ -340,6 +340,7 @@ export const envoyerScan = async (contenu: string): Promise<ScanResult> => {
         const err = await response
           .json()
           .catch(() => ({ erreur: 'Erreur serveur' }));
+        logError('ApiService', `Envoi HTTP ${response.status}: ${err.erreur || 'Erreur serveur'} → ${url}`);
         return {
           statut: 'erreur',
           message: err.erreur || 'Erreur serveur',
@@ -350,6 +351,8 @@ export const envoyerScan = async (contenu: string): Promise<ScanResult> => {
       return await response.json();
     } catch (e) {
       const ne = classifyNetworkError(e);
+      const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+      logError('ApiService', `Envoi exception [${ne.kind}]: ${detail} → ${url}`);
       return {
         statut: 'erreur',
         message: `${ne.message}: ${baseUrl}`,

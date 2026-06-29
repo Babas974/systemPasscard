@@ -82,6 +82,28 @@ export function getNbErreursLocales(): number {
 
 // --- Envoi HTTP ---
 
+async function httpPost(url: string, body: object, timeoutMs: number = 3000): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (res.ok) return true;
+    } catch {
+      if (attempt === 0) {
+        await new Promise<void>((r) => setTimeout(r, 200));
+      }
+    }
+  }
+  return false;
+}
+
 async function envoyerLog(
   source: string,
   niveau: NiveauLog,
@@ -90,33 +112,12 @@ async function envoyerLog(
   const baseUrl = getApiBaseUrl();
   if (!baseUrl) return false;
   const url = `${baseUrl}/debug/log`;
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 3000);
-
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          source,
-          niveau,
-          message,
-          date_heure: formatLocalDateTime(),
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if (res.ok) return true;
-    } catch {
-      // Retry immediat pour erreurs transientes
-      if (attempt === 0) {
-        await new Promise<void>((r) => setTimeout(r, 200));
-      }
-    }
-  }
-  return false;
+  return httpPost(url, {
+    source,
+    niveau,
+    message,
+    date_heure: formatLocalDateTime(),
+  });
 }
 
 async function flushPeriodique(): Promise<void> {
