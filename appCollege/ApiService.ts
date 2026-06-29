@@ -105,6 +105,47 @@ export const formatLocalDateTime = (): string => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
+export type NetworkErrorKind = 'timeout' | 'proxy' | 'dns' | 'refused' | 'offline' | 'unknown';
+
+export interface NetworkError {
+  kind: NetworkErrorKind;
+  message: string;
+  original?: unknown;
+}
+
+const classifyNetworkError = (err: unknown): NetworkError => {
+  if (err instanceof Error) {
+    const name = err.name.toLowerCase();
+    const msg = err.message.toLowerCase();
+
+    if (name === 'aborterror' || name === 'timeout' || msg.includes('timeout')) {
+      return { kind: 'timeout', message: 'Delai depasse', original: err };
+    }
+    if (msg.includes('proxy') || msg.includes('192.168.224.1')) {
+      return { kind: 'proxy', message: 'Erreur proxy reseau', original: err };
+    }
+    if (msg.includes('networkrequestfailed') || msg.includes('unable to resolve host') || msg.includes('enotfound')) {
+      return { kind: 'dns', message: 'Impossible de resoudre le nom', original: err };
+    }
+    if (msg.includes('connection refused') || msg.includes('econnrefused')) {
+      return { kind: 'refused', message: 'Connexion refusee', original: err };
+    }
+    if (msg.includes('network') || msg.includes('fetch') || msg.includes('internet')) {
+      return { kind: 'offline', message: 'Reseu indisponible', original: err };
+    }
+  }
+  return { kind: 'unknown', message: String(err), original: err };
+};
+
+const isProxyError = (err: unknown): boolean => {
+  return classifyNetworkError(err).kind === 'proxy';
+};
+
+const isTransientError = (err: unknown): boolean => {
+  const kind = classifyNetworkError(err).kind;
+  return kind === 'timeout' || kind === 'proxy' || kind === 'offline';
+};
+
 const fetchWithTimeout = async (
   url: string,
   options: RequestInit,
@@ -245,10 +286,17 @@ export const resolveBaseUrl = async (): Promise<string> => {
     connecte = false;
     tentativeEchecs++;
     notifyListeners();
-    logError('ApiService', `Deconnexion detectee (tentative #${tentativeEchecs})`);
+    logError('ApiService', `Deconnexion detectee (tentative #${tentativeEchecs})`).catch(() => {});
   } else {
     tentativeEchecs++;
   }
+
+  // Si le proxy est suspecte, essayer plus tot
+  const backoff = getBackoffMs();
+  if (backoff > 0 && tentativeEchecs <= 2) {
+    await new Promise<void>((r) => setTimeout(r, Math.min(backoff, 2000)));
+  }
+
   return currentBaseUrl;
 };
 
@@ -291,9 +339,11 @@ export const envoyerScan = async (contenu: string): Promise<ScanResult> => {
 
       return await response.json();
     } catch (e) {
+      const ne = classifyNetworkError(e);
       return {
         statut: 'erreur',
-        message: `Impossible de joindre le PC: ${baseUrl}`,
+        message: `${ne.message}: ${baseUrl}`,
+        erreur: ne.kind,
       };
     }
   };
@@ -301,8 +351,12 @@ export const envoyerScan = async (contenu: string): Promise<ScanResult> => {
   const first = await sendOnce();
   if (first.statut === 'ok') return first;
 
+  // Retry immediat pour erreurs transientes (proxy, timeout)
+  const firstErr = first.erreur as NetworkErrorKind | undefined;
+  const delay = firstErr === 'proxy' || firstErr === 'timeout' ? 300 : 500;
+
   logError('ApiService', `Envoi echoue (1ere tentative): ${first.message}`);
-  await new Promise<void>((r) => setTimeout(r, 500));
+  await new Promise<void>((r) => setTimeout(r, delay));
   const second = await sendOnce();
   if (second.statut !== 'ok') {
     logError('ApiService', `Envoi echoue (2eme tentative): ${second.message}`);

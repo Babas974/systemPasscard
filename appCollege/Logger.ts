@@ -88,47 +88,61 @@ async function envoyerLog(
   message: string,
 ): Promise<boolean> {
   const baseUrl = getApiBaseUrl();
+  if (!baseUrl) return false;
   const url = `${baseUrl}/debug/log`;
 
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2500);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3000);
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source,
-        niveau,
-        message,
-        date_heure: formatLocalDateTime(),
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    return res.ok;
-  } catch {
-    return false;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source,
+          niveau,
+          message,
+          date_heure: formatLocalDateTime(),
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (res.ok) return true;
+    } catch {
+      // Retry immediat pour erreurs transientes
+      if (attempt === 0) {
+        await new Promise<void>((r) => setTimeout(r, 200));
+      }
+    }
   }
+  return false;
 }
 
 async function flushPeriodique(): Promise<void> {
   if (flushEnCours) return;
   if (fileQueue.length === 0) return;
-  if (!isConnecte()) return; // Pas de réseau, on attend
+  if (!isConnecte()) return;
 
   flushEnCours = true;
   try {
     const restants: LogEntry[] = [];
+    let consecutiveFailures = 0;
     for (const item of fileQueue) {
       const ok = await envoyerLog(item.source, item.niveau, item.message);
       if (ok) {
         item.envoye = true;
+        consecutiveFailures = 0;
       } else {
         restants.push(item);
+        consecutiveFailures++;
+        // Arreter si 3 echecs consecutifs (reseau indisponible)
+        if (consecutiveFailures >= 3) {
+          restants.push(...fileQueue.slice(fileQueue.indexOf(item) + 1));
+          break;
+        }
       }
     }
-    // Remplacer la queue par les non-envoyes
     fileQueue.length = 0;
     fileQueue.push(...restants);
   } finally {
@@ -158,7 +172,6 @@ export async function log(
   const timestamp = Date.now();
   const ligne = `[${niveau.toUpperCase()}] [${source}] ${message}`;
 
-  // Toujours log dans la console natif
   switch (niveau) {
     case 'debug':
       console.debug(ligne);
@@ -175,16 +188,15 @@ export async function log(
       break;
   }
 
-  // Stocker localement (toujours)
   const entry: LogEntry = { source, niveau, message, timestamp, envoye: false };
   ajouterLogLocal(entry);
 
-  // FATAL/ERROR : flush immediat vers le PC
+  // FATAL/ERROR : flush immediat (si connecte)
   if (niveau === 'fatal' || niveau === 'error') {
     if (isConnecte()) {
       envoyerLog(source, niveau, message).then((ok) => {
         if (ok) entry.envoye = true;
-      });
+      }).catch(() => {});
     } else {
       fileQueue.push(entry);
     }
