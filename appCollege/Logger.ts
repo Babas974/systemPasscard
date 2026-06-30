@@ -6,7 +6,7 @@
 // - Buffer local accessible pour la console debug
 
 import { getApiBaseUrl, isConnecte, formatLocalDateTime } from './ApiService';
-import { loadLogs, saveLogs, LogEntryPersist } from './StorageService';
+import { loadLogs, saveLogs, LogEntryPersist, clearLogs } from './StorageService';
 
 export type NiveauLog = 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 
@@ -78,6 +78,14 @@ export function getNbErreursLocales(): number {
   return logsLocaux.filter(
     (l) => l.niveau === 'error' || l.niveau === 'fatal',
   ).length;
+}
+
+export function clearLogsLocaux(): void {
+  logsLocaux = [];
+  fileQueue.length = 0;
+  persistTimer = null;
+  stopLogFlusher();
+  clearLogs().catch(() => {});
 }
 
 // --- Envoi HTTP ---

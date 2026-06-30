@@ -58,6 +58,7 @@ import {
   logFatal,
   startLogFlusher,
   installGlobalErrorHandler,
+  clearLogsLocaux,
 } from './Logger';
 import SettingsScreen from './SettingsScreen';
 import { version as appVersion } from './package.json';
@@ -385,6 +386,7 @@ export function App() {
         // Reset immediat du backoff
         resetBackoff();
         setPcConnecte(false);
+        startLogFlusher(3000);
 
         // Delai 2s pour laisser le WiFi se stabiliser apres veille
         if (timerReconnexion) clearTimeout(timerReconnexion);
@@ -402,6 +404,8 @@ export function App() {
             traiterFileSuppressionRef.current();
           }
         }, 2000);
+      } else if (next === 'background' || next === 'inactive') {
+        clearLogsLocaux();
       }
     };
 

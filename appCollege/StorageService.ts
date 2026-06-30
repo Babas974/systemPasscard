@@ -262,6 +262,14 @@ export const clearDeleteQueue = async (): Promise<void> => {
   }
 };
 
+export const clearLogs = async (): Promise<void> => {
+  const AS = getAsyncStorage();
+  if (!AS) return;
+  try {
+    await AS.removeItem(KEYS.LOGS);
+  } catch {}
+};
+
 export const generateId = (): string => {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 };
