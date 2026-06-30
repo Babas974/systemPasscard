@@ -151,21 +151,46 @@ class NetworkModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
     @ReactMethod
     fun writeLogFile(content: String, extension: String, promise: Promise) {
         try {
-            val dir = File(
-                reactApplicationContext.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
-                "appcollege-logs"
-            )
-            if (!dir.exists()) dir.mkdirs()
-
+            val dir = getLogDir()
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.FRANCE).format(Date())
             val ext = if (extension.startsWith(".")) extension else ".$extension"
             val file = File(dir, "appcollege_$timestamp$ext")
             FileWriter(file).use { it.write(content) }
-
             promise.resolve(file.absolutePath)
         } catch (e: Exception) {
             promise.reject("ERROR", "Impossible d'ecrire le fichier log", e)
         }
+    }
+
+    @ReactMethod
+    fun appendLogEntry(line: String) {
+        try {
+            val dir = getLogDir()
+            val today = SimpleDateFormat("yyyyMMdd", Locale.FRANCE).format(Date())
+            val file = File(dir, "appcollege_$today.log")
+            FileWriter(file, true).use { it.appendLine(line) }
+        } catch (_: Exception) {}
+    }
+
+    @ReactMethod
+    fun getCurrentLogFile(promise: Promise) {
+        try {
+            val dir = getLogDir()
+            val today = SimpleDateFormat("yyyyMMdd", Locale.FRANCE).format(Date())
+            val file = File(dir, "appcollege_$today.log")
+            promise.resolve(file.absolutePath)
+        } catch (e: Exception) {
+            promise.reject("ERROR", "Impossible de trouver le fichier log", e)
+        }
+    }
+
+    private fun getLogDir(): File {
+        val dir = File(
+            reactApplicationContext.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
+            "appcollege-logs"
+        )
+        if (!dir.exists()) dir.mkdirs()
+        return dir
     }
 
     @ReactMethod

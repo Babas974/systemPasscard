@@ -7,6 +7,9 @@
 
 import { getApiBaseUrl, isConnecte, formatLocalDateTime } from './ApiService';
 import { loadLogs, saveLogs, LogEntryPersist, clearLogs } from './StorageService';
+import { NativeModules, Platform } from 'react-native';
+
+const { NetworkModule } = NativeModules;
 
 export type NiveauLog = 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 
@@ -180,6 +183,7 @@ export async function log(
 ): Promise<void> {
   const timestamp = Date.now();
   const ligne = `[${niveau.toUpperCase()}] [${source}] ${message}`;
+  const isoDate = new Date(timestamp).toISOString();
 
   switch (niveau) {
     case 'debug':
@@ -195,6 +199,12 @@ export async function log(
     case 'fatal':
       console.error(ligne);
       break;
+  }
+
+  // Ecrire dans le fichier sur le disque (temps reel)
+  if (Platform.OS === 'android' && NetworkModule) {
+    const fileLine = `${isoDate} [${niveau.toUpperCase()}] [${source}] ${message}`;
+    NetworkModule.appendLogEntry(fileLine);
   }
 
   const entry: LogEntry = { source, niveau, message, timestamp, envoye: false };

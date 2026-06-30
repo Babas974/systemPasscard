@@ -128,24 +128,7 @@ export default function SettingsScreen({
         return;
       }
 
-      const exportData = {
-        app: 'appCollege',
-        version,
-        date_export: formatLocalDateTime(),
-        ip_tablette: ipActuelle,
-        serveur: getApiBaseUrl() || null,
-        connecte: pcConnecte,
-        total: locaux.length,
-        logs: locaux.map((l) => ({
-          timestamp: new Date(l.timestamp).toISOString(),
-          niveau: l.niveau,
-          source: l.source,
-          message: l.message,
-        })),
-      };
-
-      const contenu = JSON.stringify(exportData, null, 2);
-      const filePath = await NetworkModule.writeLogFile(contenu, 'json');
+      const filePath = await NetworkModule.getCurrentLogFile();
       await NetworkModule.shareLogFile(filePath);
     } catch (e: any) {
       Alert.alert('Erreur', e?.message || 'Export echoue');
