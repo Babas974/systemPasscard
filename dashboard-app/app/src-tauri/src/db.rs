@@ -29,9 +29,18 @@ pub struct Scan {
 }
 
 pub fn init_db() -> Result<Arc<Mutex<Connection>>, rusqlite::Error> {
-    let conn = Connection::open("scans.db")?;
+    let db_path = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("appcollege")
+        .join("scans.db");
+
+    let parent = db_path.parent().unwrap();
+    std::fs::create_dir_all(parent).ok();
+
+    let conn = Connection::open(&db_path)?;
     conn.execute_batch(
         "PRAGMA journal_mode=WAL;
+         PRAGMA foreign_keys=ON;
          CREATE TABLE IF NOT EXISTS scans (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             contenu TEXT NOT NULL,
