@@ -149,7 +149,7 @@ class NetworkModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
     }
 
     @ReactMethod
-    fun writeLogFile(content: String, promise: Promise) {
+    fun writeLogFile(content: String, extension: String, promise: Promise) {
         try {
             val dir = File(
                 reactApplicationContext.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
@@ -158,7 +158,8 @@ class NetworkModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
             if (!dir.exists()) dir.mkdirs()
 
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.FRANCE).format(Date())
-            val file = File(dir, "appcollege_$timestamp.log")
+            val ext = if (extension.startsWith(".")) extension else ".$extension"
+            val file = File(dir, "appcollege_$timestamp$ext")
             FileWriter(file).use { it.write(content) }
 
             promise.resolve(file.absolutePath)
