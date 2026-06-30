@@ -4,9 +4,7 @@ import com.facebook.react.modules.network.OkHttpClientFactory
 import com.facebook.react.modules.network.OkHttpClientProvider
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
-import okhttp3.CookieJar
-import okhttp3.HttpUrl
-import java.net.Proxy
+import okhttp3.Proxy
 import java.net.URI
 import java.util.concurrent.TimeUnit
 
@@ -19,7 +17,6 @@ class NoProxyOkHttpClientFactory : OkHttpClientFactory {
             .retryOnConnectionFailure(true)
             .protocols(listOf(Protocol.HTTP_1_1, Protocol.HTTP_2))
             .proxy(Proxy.NO_PROXY)
-            .cookieJar(CookieJar.NO_COOKIES)
 
         baseBuilder.proxySelector(object : java.net.ProxySelector() {
             override fun select(uri: URI): List<Proxy> {
@@ -49,6 +46,12 @@ class NoProxyOkHttpClientFactory : OkHttpClientFactory {
             }
         })
 
-        return baseBuilder.build()
+        val client = baseBuilder.build()
+        val container = NoPersistCookieJarContainer()
+        container.setCookieJar(okhttp3.CookieJar.NO_COOKIES)
+
+        return client.newBuilder()
+            .cookieJar(container)
+            .build()
     }
 }
