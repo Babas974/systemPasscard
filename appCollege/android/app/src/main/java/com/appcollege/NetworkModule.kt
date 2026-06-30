@@ -1,16 +1,23 @@
 package com.appcollege
 
+import android.content.Intent
 import android.net.wifi.WifiManager
 import android.content.Context
+import android.os.Environment
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.Promise
 import com.facebook.react.module.annotations.ReactModule
+import java.io.File
+import java.io.FileWriter
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.InetAddress
 import java.net.Socket
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -139,5 +146,56 @@ class NetworkModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
             }
         } catch (_: Exception) {}
         return "127.0.0.1"
+    }
+
+    @ReactMethod
+    fun writeLogFile(content: String, promise: Promise) {
+        try {
+            val dir = File(
+                reactApplicationContext.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
+                "appcollege-logs"
+            )
+            if (!dir.exists()) dir.mkdirs()
+
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.FRANCE).format(Date())
+            val file = File(dir, "appcollege_$timestamp.log")
+            FileWriter(file).use { it.write(content) }
+
+            promise.resolve(file.absolutePath)
+        } catch (e: Exception) {
+            promise.reject("ERROR", "Impossible d'ecrire le fichier log", e)
+        }
+    }
+
+    @ReactMethod
+    fun shareLogFile(filePath: String, promise: Promise) {
+        try {
+            val file = File(filePath)
+            if (!file.exists()) {
+                promise.reject("ERROR", "Fichier introuvable: $filePath")
+                return
+            }
+
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                reactApplicationContext,
+                "${reactApplicationContext.packageName}.fileprovider",
+                file
+            )
+
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+
+            reactApplicationContext.startActivity(
+                Intent.createChooser(intent, "Exporter les logs")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("ERROR", "Impossible de partager le fichier", e)
+        }
     }
 }

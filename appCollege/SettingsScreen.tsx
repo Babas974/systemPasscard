@@ -1,5 +1,5 @@
 // SettingsScreen.tsx
-// Page de parametres : debug console, test connexion, vider historique, liste eleves.
+// Page de parametres : debug console, test connexion, vider historique, export logs, liste eleves.
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -9,6 +9,7 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  NativeModules,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from './theme';
@@ -16,6 +17,8 @@ import { createStyles } from './styles';
 import { getApiBaseUrl, formatLocalDateTime } from './ApiService';
 import { HistoryEntry, DeleteQueueEntry } from './StorageService';
 import { getLogsLocaux, getNbErreursLocales } from './Logger';
+
+const { NetworkModule } = NativeModules;
 
 interface Props {
   theme: Theme;
@@ -117,6 +120,39 @@ export default function SettingsScreen({
     setNbErreurs(0);
   };
 
+  const handleExporterLogs = async () => {
+    try {
+      const locaux = getLogsLocaux(500);
+      if (locaux.length === 0) {
+        Alert.alert('Info', 'Aucun log a exporter.');
+        return;
+      }
+
+      const lignes = locaux.map((l) => {
+        const date = new Date(l.timestamp).toISOString();
+        return `${date} [${l.niveau.toUpperCase()}] [${l.source}] ${l.message}`;
+      });
+
+      const header = [
+        '=== AppCollege Log Export ===',
+        `Date: ${formatLocalDateTime()}`,
+        `Version: ${version}`,
+        `IP tablette: ${ipActuelle}`,
+        `Serveur: ${getApiBaseUrl() || 'inconnu'}`,
+        `Connecte: ${pcConnecte ? 'oui' : 'non'}`,
+        `Total: ${locaux.length} lignes`,
+        '=============================',
+        '',
+      ].join('\n');
+
+      const contenu = header + lignes.join('\n');
+      const filePath = await NetworkModule.writeLogFile(contenu);
+      await NetworkModule.shareLogFile(filePath);
+    } catch (e: any) {
+      Alert.alert('Erreur', e?.message || 'Export echoue');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
@@ -211,6 +247,18 @@ export default function SettingsScreen({
             {fileSuppression.length} suppression(s) en attente sur le serveur
           </Text>
         )}
+
+        {/* Exporter les logs */}
+        <TouchableOpacity
+          style={styles.settingsBouton}
+          onPress={handleExporterLogs}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.settingsBoutonTexte}>Exporter les logs</Text>
+        </TouchableOpacity>
+        <Text style={[styles.settingsResultat, { color: theme.text }]}>
+          Genere un fichier .log et le partage (email, USB, etc.)
+        </Text>
 
         {/* Historique des eleves */}
         <View style={styles.settingsHistorique}>
